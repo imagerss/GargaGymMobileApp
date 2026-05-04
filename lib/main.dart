@@ -13,6 +13,9 @@ import 'features/home/home_screen.dart';
 import 'features/plans/workout_plan_repository.dart';
 import 'features/plans/workout_plan_store.dart';
 import 'features/plans/workout_plans_controller.dart';
+import 'features/measurements/measurements.dart';
+import 'features/photos/photos.dart';
+import 'features/sessions/sessions.dart';
 import 'services/api_client.dart';
 import 'services/sync_service.dart';
 
@@ -34,6 +37,9 @@ class _GargaGymAppState extends State<GargaGymApp> {
   late final AuthController _authController;
   ExercisesController? _exercisesController;
   WorkoutPlansController? _plansController;
+  SessionsController? _sessionsController;
+  MeasurementsController? _measurementsController;
+  PhotosController? _photosController;
 
   @override
   void initState() {
@@ -43,6 +49,9 @@ class _GargaGymAppState extends State<GargaGymApp> {
       _authController = dependencies.authController;
       _exercisesController = dependencies.exercisesController;
       _plansController = dependencies.plansController;
+      _sessionsController = dependencies.sessionsController;
+      _measurementsController = dependencies.measurementsController;
+      _photosController = dependencies.photosController;
     } else {
       _authController = widget.controller!;
     }
@@ -58,6 +67,9 @@ class _GargaGymAppState extends State<GargaGymApp> {
     }
     _exercisesController?.dispose();
     _plansController?.dispose();
+    _sessionsController?.dispose();
+    _measurementsController?.dispose();
+    _photosController?.dispose();
     super.dispose();
   }
 
@@ -89,10 +101,29 @@ class _GargaGymAppState extends State<GargaGymApp> {
         store: WorkoutPlanStore(),
       ),
     );
+    final planRepository = WorkoutPlanRepository(
+      apiClient: apiClient,
+      syncService: syncService,
+      exerciseRepository: exerciseRepository,
+      store: WorkoutPlanStore(),
+    );
     return _AppDependencies(
       authController: authController,
       exercisesController: exercisesController,
       plansController: plansController,
+      sessionsController: SessionsController(
+        apiClient: apiClient,
+        syncService: syncService,
+        planRepository: planRepository,
+      ),
+      measurementsController: MeasurementsController(
+        apiClient: apiClient,
+        syncService: syncService,
+      ),
+      photosController: PhotosController(
+        apiClient: apiClient,
+        syncService: syncService,
+      ),
     );
   }
 
@@ -136,6 +167,45 @@ class _GargaGymAppState extends State<GargaGymApp> {
     return _plansController ??= _buildPlansController();
   }
 
+  SessionsController _ensureSessionsController() {
+    const config = AppConfig();
+    final apiClient = ApiClient(baseUrl: config.apiBaseUrl);
+    final syncService = SyncService(apiClient: apiClient);
+    final exerciseRepository = ExerciseRepository(
+      apiClient: apiClient,
+      syncService: syncService,
+      store: ExerciseStore(),
+    );
+    return _sessionsController ??= SessionsController(
+      apiClient: apiClient,
+      syncService: syncService,
+      planRepository: WorkoutPlanRepository(
+        apiClient: apiClient,
+        syncService: syncService,
+        exerciseRepository: exerciseRepository,
+        store: WorkoutPlanStore(),
+      ),
+    );
+  }
+
+  MeasurementsController _ensureMeasurementsController() {
+    const config = AppConfig();
+    final apiClient = ApiClient(baseUrl: config.apiBaseUrl);
+    return _measurementsController ??= MeasurementsController(
+      apiClient: apiClient,
+      syncService: SyncService(apiClient: apiClient),
+    );
+  }
+
+  PhotosController _ensurePhotosController() {
+    const config = AppConfig();
+    final apiClient = ApiClient(baseUrl: config.apiBaseUrl);
+    return _photosController ??= PhotosController(
+      apiClient: apiClient,
+      syncService: SyncService(apiClient: apiClient),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -148,6 +218,9 @@ class _GargaGymAppState extends State<GargaGymApp> {
                     controller: _authController,
                     exercisesController: _ensureExercisesController(),
                     plansController: _ensurePlansController(),
+                    sessionsController: _ensureSessionsController(),
+                    measurementsController: _ensureMeasurementsController(),
+                    photosController: _ensurePhotosController(),
                   )
                 : AuthScreen(controller: _authController)
           : const _SplashScreen(),
@@ -160,11 +233,17 @@ class _AppDependencies {
     required this.authController,
     required this.exercisesController,
     required this.plansController,
+    required this.sessionsController,
+    required this.measurementsController,
+    required this.photosController,
   });
 
   final AuthController authController;
   final ExercisesController exercisesController;
   final WorkoutPlansController plansController;
+  final SessionsController sessionsController;
+  final MeasurementsController measurementsController;
+  final PhotosController photosController;
 }
 
 class _SplashScreen extends StatelessWidget {

@@ -6,6 +6,9 @@ import '../exercises/exercises_controller.dart';
 import '../exercises/exercises_screen.dart';
 import '../plans/workout_plans_controller.dart';
 import '../plans/workout_plans_screen.dart';
+import '../measurements/measurements.dart';
+import '../photos/photos.dart';
+import '../sessions/sessions.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
@@ -13,11 +16,17 @@ class HomeScreen extends StatefulWidget {
     required this.controller,
     required this.exercisesController,
     required this.plansController,
+    required this.sessionsController,
+    required this.measurementsController,
+    required this.photosController,
   });
 
   final AuthController controller;
   final ExercisesController exercisesController;
   final WorkoutPlansController plansController;
+  final SessionsController sessionsController;
+  final MeasurementsController measurementsController;
+  final PhotosController photosController;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -117,6 +126,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: WorkoutPlansScreen(controller: widget.plansController),
                 )
+              else if (_section == _HomeSection.sessions)
+                Expanded(
+                  child: SessionsScreen(controller: widget.sessionsController),
+                )
+              else if (_section == _HomeSection.measurements)
+                Expanded(
+                  child: MeasurementsScreen(
+                    controller: widget.measurementsController,
+                  ),
+                )
+              else if (_section == _HomeSection.photos)
+                Expanded(
+                  child: PhotosScreen(controller: widget.photosController),
+                )
               else
                 Expanded(
                   child: ExercisesScreen(
@@ -200,7 +223,11 @@ class _AppMenu extends StatelessWidget {
               _MenuItem(
                 icon: Icons.list_alt_outlined,
                 label: 'Sesje',
-                onTap: () => Navigator.of(context).pop(),
+                selected: section == _HomeSection.sessions,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onSelect(_HomeSection.sessions);
+                },
               ),
               _MenuItem(
                 icon: Icons.fitness_center_outlined,
@@ -214,12 +241,20 @@ class _AppMenu extends StatelessWidget {
               _MenuItem(
                 icon: Icons.monitor_weight_outlined,
                 label: 'Pomiary',
-                onTap: () => Navigator.of(context).pop(),
+                selected: section == _HomeSection.measurements,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onSelect(_HomeSection.measurements);
+                },
               ),
               _MenuItem(
                 icon: Icons.photo_camera_outlined,
                 label: 'Zdjecia',
-                onTap: () => Navigator.of(context).pop(),
+                selected: section == _HomeSection.photos,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onSelect(_HomeSection.photos);
+                },
               ),
               _MenuItem(
                 icon: Icons.account_circle_outlined,
@@ -291,7 +326,14 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-enum _HomeSection { dashboard, plans, exercises }
+enum _HomeSection {
+  dashboard,
+  plans,
+  sessions,
+  exercises,
+  measurements,
+  photos,
+}
 
 class _DashboardContent extends StatelessWidget {
   const _DashboardContent({required this.userName, required this.offline});

@@ -46,6 +46,56 @@ class ApiClient {
     return _sendJson('PUT', path, body: body);
   }
 
+  Future<Map<String, dynamic>> patchJson(
+    String path, {
+    Map<String, dynamic>? body,
+  }) {
+    return _sendJson('PATCH', path, body: body);
+  }
+
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required Map<String, String> fields,
+    required List<http.MultipartFile> files,
+  }) async {
+    final request =
+        http.MultipartRequest(
+            'POST',
+            _baseUri.resolve('./${path.replaceFirst(RegExp(r'^/+'), '')}'),
+          )
+          ..headers.addAll({
+            'Accept': 'application/json',
+            if (_bearerToken != null) 'Authorization': 'Bearer $_bearerToken',
+          })
+          ..fields.addAll(fields)
+          ..files.addAll(files);
+
+    final streamed = await _httpClient.send(request);
+    final response = await http.Response.fromStream(streamed);
+    final decoded = response.body.isEmpty
+        ? <String, dynamic>{}
+        : jsonDecode(response.body);
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{'data': decoded};
+    }
+
+    final payload = decoded is Map<String, dynamic>
+        ? decoded
+        : <String, dynamic>{};
+    throw ApiException(
+      _firstLaravelError(payload) ??
+          payload['message'] as String? ??
+          'Nie udalo sie polaczyc. Sprobuj ponownie.',
+      statusCode: response.statusCode,
+      errors: payload['errors'] is Map<String, dynamic>
+          ? payload['errors'] as Map<String, dynamic>
+          : null,
+    );
+  }
+
   Future<Map<String, dynamic>> _sendJson(
     String method,
     String path, {
