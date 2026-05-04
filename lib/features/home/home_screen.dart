@@ -8,6 +8,7 @@ import '../plans/workout_plans_controller.dart';
 import '../plans/workout_plans_screen.dart';
 import '../measurements/measurements.dart';
 import '../photos/photos.dart';
+import '../profile/profile_screen.dart';
 import '../sessions/sessions.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -140,6 +141,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Expanded(
                   child: PhotosScreen(controller: widget.photosController),
                 )
+              else if (_section == _HomeSection.profile)
+                Expanded(child: ProfileScreen(controller: controller))
               else
                 Expanded(
                   child: ExercisesScreen(
@@ -259,7 +262,11 @@ class _AppMenu extends StatelessWidget {
               _MenuItem(
                 icon: Icons.account_circle_outlined,
                 label: 'Profil',
-                onTap: () => Navigator.of(context).pop(),
+                selected: section == _HomeSection.profile,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onSelect(_HomeSection.profile);
+                },
               ),
               const Spacer(),
               const Divider(color: AppColors.slate200),
@@ -333,6 +340,7 @@ enum _HomeSection {
   exercises,
   measurements,
   photos,
+  profile,
 }
 
 class _DashboardContent extends StatelessWidget {
