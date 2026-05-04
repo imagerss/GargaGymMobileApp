@@ -28,11 +28,22 @@ class ApiClient {
     return _sendJson('GET', path);
   }
 
+  Future<Map<String, dynamic>> deleteJson(String path) {
+    return _sendJson('DELETE', path);
+  }
+
   Future<Map<String, dynamic>> postJson(
     String path, {
     Map<String, dynamic>? body,
   }) {
     return _sendJson('POST', path, body: body);
+  }
+
+  Future<Map<String, dynamic>> putJson(
+    String path, {
+    Map<String, dynamic>? body,
+  }) {
+    return _sendJson('PUT', path, body: body);
   }
 
   Future<Map<String, dynamic>> _sendJson(

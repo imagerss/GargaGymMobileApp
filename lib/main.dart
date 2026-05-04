@@ -6,6 +6,9 @@ import 'features/auth/auth_controller.dart';
 import 'features/auth/auth_repository.dart';
 import 'features/auth/auth_screen.dart';
 import 'features/auth/session_store.dart';
+import 'features/exercises/exercise_repository.dart';
+import 'features/exercises/exercise_store.dart';
+import 'features/exercises/exercises_controller.dart';
 import 'features/home/home_screen.dart';
 import 'services/api_client.dart';
 import 'services/sync_service.dart';
@@ -26,11 +29,18 @@ class GargaGymApp extends StatefulWidget {
 
 class _GargaGymAppState extends State<GargaGymApp> {
   late final AuthController _authController;
+  ExercisesController? _exercisesController;
 
   @override
   void initState() {
     super.initState();
-    _authController = widget.controller ?? _buildAuthController();
+    if (widget.controller == null) {
+      final dependencies = _buildDependencies();
+      _authController = dependencies.authController;
+      _exercisesController = dependencies.exercisesController;
+    } else {
+      _authController = widget.controller!;
+    }
     _authController.addListener(_handleAuthChanged);
     _authController.restoreSession();
   }
@@ -41,21 +51,50 @@ class _GargaGymAppState extends State<GargaGymApp> {
     if (widget.controller == null) {
       _authController.dispose();
     }
+    _exercisesController?.dispose();
     super.dispose();
   }
 
   void _handleAuthChanged() => setState(() {});
 
-  AuthController _buildAuthController() {
+  _AppDependencies _buildDependencies() {
     const config = AppConfig();
     final apiClient = ApiClient(baseUrl: config.apiBaseUrl);
     final syncService = SyncService(apiClient: apiClient);
-    return AuthController(
+    final authController = AuthController(
       authRepository: AuthRepository(apiClient: apiClient, config: config),
       sessionStore: SessionStore(),
       apiClient: apiClient,
       syncService: syncService,
     );
+    final exercisesController = ExercisesController(
+      repository: ExerciseRepository(
+        apiClient: apiClient,
+        syncService: syncService,
+        store: ExerciseStore(),
+      ),
+    );
+    return _AppDependencies(
+      authController: authController,
+      exercisesController: exercisesController,
+    );
+  }
+
+  ExercisesController _buildExercisesController() {
+    const config = AppConfig();
+    final apiClient = ApiClient(baseUrl: config.apiBaseUrl);
+    final syncService = SyncService(apiClient: apiClient);
+    return ExercisesController(
+      repository: ExerciseRepository(
+        apiClient: apiClient,
+        syncService: syncService,
+        store: ExerciseStore(),
+      ),
+    );
+  }
+
+  ExercisesController _ensureExercisesController() {
+    return _exercisesController ??= _buildExercisesController();
   }
 
   @override
@@ -66,11 +105,24 @@ class _GargaGymAppState extends State<GargaGymApp> {
       theme: buildAppTheme(),
       home: _authController.initialized
           ? _authController.isAuthenticated
-                ? HomeScreen(controller: _authController)
+                ? HomeScreen(
+                    controller: _authController,
+                    exercisesController: _ensureExercisesController(),
+                  )
                 : AuthScreen(controller: _authController)
           : const _SplashScreen(),
     );
   }
+}
+
+class _AppDependencies {
+  const _AppDependencies({
+    required this.authController,
+    required this.exercisesController,
+  });
+
+  final AuthController authController;
+  final ExercisesController exercisesController;
 }
 
 class _SplashScreen extends StatelessWidget {
