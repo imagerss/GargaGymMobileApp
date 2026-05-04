@@ -10,6 +10,9 @@ import 'features/exercises/exercise_repository.dart';
 import 'features/exercises/exercise_store.dart';
 import 'features/exercises/exercises_controller.dart';
 import 'features/home/home_screen.dart';
+import 'features/plans/workout_plan_repository.dart';
+import 'features/plans/workout_plan_store.dart';
+import 'features/plans/workout_plans_controller.dart';
 import 'services/api_client.dart';
 import 'services/sync_service.dart';
 
@@ -30,6 +33,7 @@ class GargaGymApp extends StatefulWidget {
 class _GargaGymAppState extends State<GargaGymApp> {
   late final AuthController _authController;
   ExercisesController? _exercisesController;
+  WorkoutPlansController? _plansController;
 
   @override
   void initState() {
@@ -38,6 +42,7 @@ class _GargaGymAppState extends State<GargaGymApp> {
       final dependencies = _buildDependencies();
       _authController = dependencies.authController;
       _exercisesController = dependencies.exercisesController;
+      _plansController = dependencies.plansController;
     } else {
       _authController = widget.controller!;
     }
@@ -52,6 +57,7 @@ class _GargaGymAppState extends State<GargaGymApp> {
       _authController.dispose();
     }
     _exercisesController?.dispose();
+    _plansController?.dispose();
     super.dispose();
   }
 
@@ -67,16 +73,26 @@ class _GargaGymAppState extends State<GargaGymApp> {
       apiClient: apiClient,
       syncService: syncService,
     );
+    final exerciseRepository = ExerciseRepository(
+      apiClient: apiClient,
+      syncService: syncService,
+      store: ExerciseStore(),
+    );
     final exercisesController = ExercisesController(
-      repository: ExerciseRepository(
+      repository: exerciseRepository,
+    );
+    final plansController = WorkoutPlansController(
+      repository: WorkoutPlanRepository(
         apiClient: apiClient,
         syncService: syncService,
-        store: ExerciseStore(),
+        exerciseRepository: exerciseRepository,
+        store: WorkoutPlanStore(),
       ),
     );
     return _AppDependencies(
       authController: authController,
       exercisesController: exercisesController,
+      plansController: plansController,
     );
   }
 
@@ -93,8 +109,31 @@ class _GargaGymAppState extends State<GargaGymApp> {
     );
   }
 
+  WorkoutPlansController _buildPlansController() {
+    const config = AppConfig();
+    final apiClient = ApiClient(baseUrl: config.apiBaseUrl);
+    final syncService = SyncService(apiClient: apiClient);
+    final exerciseRepository = ExerciseRepository(
+      apiClient: apiClient,
+      syncService: syncService,
+      store: ExerciseStore(),
+    );
+    return WorkoutPlansController(
+      repository: WorkoutPlanRepository(
+        apiClient: apiClient,
+        syncService: syncService,
+        exerciseRepository: exerciseRepository,
+        store: WorkoutPlanStore(),
+      ),
+    );
+  }
+
   ExercisesController _ensureExercisesController() {
     return _exercisesController ??= _buildExercisesController();
+  }
+
+  WorkoutPlansController _ensurePlansController() {
+    return _plansController ??= _buildPlansController();
   }
 
   @override
@@ -108,6 +147,7 @@ class _GargaGymAppState extends State<GargaGymApp> {
                 ? HomeScreen(
                     controller: _authController,
                     exercisesController: _ensureExercisesController(),
+                    plansController: _ensurePlansController(),
                   )
                 : AuthScreen(controller: _authController)
           : const _SplashScreen(),
@@ -119,10 +159,12 @@ class _AppDependencies {
   const _AppDependencies({
     required this.authController,
     required this.exercisesController,
+    required this.plansController,
   });
 
   final AuthController authController;
   final ExercisesController exercisesController;
+  final WorkoutPlansController plansController;
 }
 
 class _SplashScreen extends StatelessWidget {

@@ -4,16 +4,20 @@ import '../../core/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../exercises/exercises_controller.dart';
 import '../exercises/exercises_screen.dart';
+import '../plans/workout_plans_controller.dart';
+import '../plans/workout_plans_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.controller,
     required this.exercisesController,
+    required this.plansController,
   });
 
   final AuthController controller;
   final ExercisesController exercisesController;
+  final WorkoutPlansController plansController;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -109,6 +113,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   userName: user?.name,
                   offline: controller.offline,
                 )
+              else if (_section == _HomeSection.plans)
+                Expanded(
+                  child: WorkoutPlansScreen(controller: widget.plansController),
+                )
               else
                 Expanded(
                   child: ExercisesScreen(
@@ -183,7 +191,11 @@ class _AppMenu extends StatelessWidget {
               _MenuItem(
                 icon: Icons.assignment_outlined,
                 label: 'Plany',
-                onTap: () => Navigator.of(context).pop(),
+                selected: section == _HomeSection.plans,
+                onTap: () {
+                  Navigator.of(context).pop();
+                  onSelect(_HomeSection.plans);
+                },
               ),
               _MenuItem(
                 icon: Icons.list_alt_outlined,
@@ -279,7 +291,7 @@ class _MenuItem extends StatelessWidget {
   }
 }
 
-enum _HomeSection { dashboard, exercises }
+enum _HomeSection { dashboard, plans, exercises }
 
 class _DashboardContent extends StatelessWidget {
   const _DashboardContent({required this.userName, required this.offline});
