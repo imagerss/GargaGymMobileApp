@@ -14,6 +14,7 @@ class ExercisesController extends ChangeNotifier {
   bool creating = false;
   int? deletingId;
   String? error;
+  String? syncError;
 
   Future<void> load() async {
     loading = true;
@@ -22,10 +23,24 @@ class ExercisesController extends ChangeNotifier {
 
     try {
       exercises = await _repository.listExercises();
+      _consumeSyncFailures();
     } catch (_) {
       error = 'Nie udalo sie pobrac cwiczen.';
     } finally {
       loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refresh() async {
+    error = null;
+    notifyListeners();
+    try {
+      exercises = await _repository.refreshExercises();
+      _consumeSyncFailures();
+    } catch (_) {
+      error = 'Nie udalo sie odswiezyc cwiczen.';
+    } finally {
       notifyListeners();
     }
   }
@@ -46,6 +61,7 @@ class ExercisesController extends ChangeNotifier {
       );
       exercises = [created, ...exercises.where((item) => item.id != created.id)]
         ..sort((a, b) => b.id.compareTo(a.id));
+      _consumeSyncFailures();
     } catch (_) {
       error = 'Nie udalo sie dodac cwiczenia.';
     } finally {
@@ -65,12 +81,42 @@ class ExercisesController extends ChangeNotifier {
 
     try {
       await _repository.deleteExercise(exercise);
+      _consumeSyncFailures(restore: previous);
+      _checkBackgroundFailures(restore: previous);
     } catch (_) {
       exercises = previous;
       error = 'Nie udalo sie usunac cwiczenia.';
     } finally {
       deletingId = null;
       notifyListeners();
+    }
+  }
+
+  void _checkBackgroundFailures({List<Exercise>? restore}) {
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
+      _consumeSyncFailures(restore: restore);
+      notifyListeners();
+    });
+  }
+
+  void _consumeSyncFailures({List<Exercise>? restore}) {
+    final failures = _repository.takeFailures();
+    if (failures.isEmpty) return;
+    syncError = failures.last.message;
+    if (restore != null) {
+      final failedIds = failures.map((failure) => failure.entityId).toSet();
+      final shouldRestore = restore.where(
+        (exercise) => failedIds.contains(exercise.id),
+      );
+      if (shouldRestore.isNotEmpty) {
+        final currentIds = exercises.map((exercise) => exercise.id).toSet();
+        exercises = [
+          ...shouldRestore.where(
+            (exercise) => !currentIds.contains(exercise.id),
+          ),
+          ...exercises,
+        ]..sort((a, b) => b.id.compareTo(a.id));
+      }
     }
   }
 }

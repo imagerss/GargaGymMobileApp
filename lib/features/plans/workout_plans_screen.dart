@@ -72,122 +72,129 @@ class _WorkoutPlansScreenState extends State<WorkoutPlansScreen> {
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.slate200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Plany treningowe',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.slate950,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Utworz plan i dodaj do niego cwiczenia z seria/powtorzeniami',
-                  style: TextStyle(color: AppColors.slate500),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.slate50,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.slate200),
-                  ),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          controller: _nameController,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(
-                            labelText: 'Nazwa planu',
-                            hintText: 'Np. Push Pull Legs',
-                          ),
-                          validator: (value) =>
-                              (value == null || value.trim().isEmpty)
-                              ? 'Podaj nazwe planu.'
-                              : null,
-                          onFieldSubmitted: (_) => _createPlan(),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton.icon(
-                          onPressed: controller.creating ? null : _createPlan,
-                          icon: controller.creating
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.add),
-                          label: Text(
-                            controller.creating ? 'Dodaje...' : 'Dodaj plan',
-                          ),
-                        ),
-                      ],
+    return RefreshIndicator(
+      onRefresh: widget.controller.refresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Plany treningowe',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppColors.slate950,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-                if (controller.error != null) ...[
-                  const SizedBox(height: 12),
-                  _InlineError(message: controller.error!),
-                ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (controller.loading)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
-              child: Center(child: CircularProgressIndicator()),
-            )
-          else if (controller.plans.isEmpty)
-            const _EmptyPlans()
-          else
-            ...controller.plans.map(
-              (plan) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _PlanTile(
-                  plan: plan,
-                  exercises: controller.exercises,
-                  form: _formFor(plan.id),
-                  configuring: _configuringPlanId == plan.id,
-                  deleting: controller.deletingId == plan.id,
-                  saving: controller.savingPlanId == plan.id,
-                  busy:
-                      controller.deletingId != null ||
-                      controller.savingPlanId != null,
-                  onToggleConfig: () => setState(() {
-                    _configuringPlanId = _configuringPlanId == plan.id
-                        ? null
-                        : plan.id;
-                  }),
-                  onDelete: () => controller.deletePlan(plan),
-                  onAddExercise: () => _addExercise(plan),
-                  onRemoveExercise: (dayExercise) =>
-                      controller.removeExerciseFromPlan(
-                        plan: plan,
-                        dayExercise: dayExercise,
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Utworz plan i dodaj do niego cwiczenia z seria/powtorzeniami',
+                    style: TextStyle(color: AppColors.slate500),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate50,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: _nameController,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Nazwa planu',
+                              hintText: 'Np. Push Pull Legs',
+                            ),
+                            validator: (value) =>
+                                (value == null || value.trim().isEmpty)
+                                ? 'Podaj nazwe planu.'
+                                : null,
+                            onFieldSubmitted: (_) => _createPlan(),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: controller.creating ? null : _createPlan,
+                            icon: controller.creating
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.add),
+                            label: Text(
+                              controller.creating ? 'Dodaje...' : 'Dodaj plan',
+                            ),
+                          ),
+                        ],
                       ),
-                  onFormChanged: () => setState(() {}),
-                ),
+                    ),
+                  ),
+                  if (controller.error != null ||
+                      controller.syncError != null) ...[
+                    const SizedBox(height: 12),
+                    _InlineError(
+                      message: controller.error ?? controller.syncError!,
+                    ),
+                  ],
+                ],
               ),
             ),
-        ],
+            const SizedBox(height: 14),
+            if (controller.loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Center(child: CircularProgressIndicator()),
+              )
+            else if (controller.plans.isEmpty)
+              const _EmptyPlans()
+            else
+              ...controller.plans.map(
+                (plan) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _PlanTile(
+                    plan: plan,
+                    exercises: controller.exercises,
+                    form: _formFor(plan.id),
+                    configuring: _configuringPlanId == plan.id,
+                    deleting: controller.deletingId == plan.id,
+                    saving: controller.savingPlanId == plan.id,
+                    busy:
+                        controller.deletingId != null ||
+                        controller.savingPlanId != null,
+                    onToggleConfig: () => setState(() {
+                      _configuringPlanId = _configuringPlanId == plan.id
+                          ? null
+                          : plan.id;
+                    }),
+                    onDelete: () => controller.deletePlan(plan),
+                    onAddExercise: () => _addExercise(plan),
+                    onRemoveExercise: (dayExercise) =>
+                        controller.removeExerciseFromPlan(
+                          plan: plan,
+                          dayExercise: dayExercise,
+                        ),
+                    onFormChanged: () => setState(() {}),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

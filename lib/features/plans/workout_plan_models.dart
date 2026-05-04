@@ -135,8 +135,8 @@ class WorkoutDayExercise {
       id: (json['id'] as num).toInt(),
       exerciseId: (json['exercise_id'] as num).toInt(),
       exerciseName: exercise is Map<String, dynamic>
-          ? exercise['name'] as String? ?? 'Cwiczenie #${json['exercise_id']}'
-          : 'Cwiczenie #${json['exercise_id']}',
+          ? exercise['name'] as String? ?? ''
+          : '',
       targetSets: (json['target_sets'] as num?)?.toInt() ?? 3,
       targetReps:
           (json['target_reps_max'] as num?)?.toInt() ??
@@ -173,6 +173,24 @@ class WorkoutDayExercise {
       'target_reps_max': targetReps,
       'sort_order': sortOrder,
     };
+  }
+
+  WorkoutDayExercise copyWith({
+    int? id,
+    int? exerciseId,
+    String? exerciseName,
+    int? targetSets,
+    int? targetReps,
+    int? sortOrder,
+  }) {
+    return WorkoutDayExercise(
+      id: id ?? this.id,
+      exerciseId: exerciseId ?? this.exerciseId,
+      exerciseName: exerciseName ?? this.exerciseName,
+      targetSets: targetSets ?? this.targetSets,
+      targetReps: targetReps ?? this.targetReps,
+      sortOrder: sortOrder ?? this.sortOrder,
+    );
   }
 }
 

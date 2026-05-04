@@ -17,18 +17,33 @@ class ExerciseRepository {
   final ApiClient _apiClient;
   final SyncService _syncService;
   final ExerciseStore _store;
+  bool _syncing = false;
+  final List<SyncFailure> _failures = [];
+
+  List<SyncFailure> takeFailures() {
+    final copy = List<SyncFailure>.from(_failures);
+    _failures.clear();
+    return copy;
+  }
 
   Future<List<Exercise>> listExercises() async {
     final cached = await _store.readExercises();
     if (cached.isNotEmpty) {
       if (await _syncService.isOnline) {
-        await syncPending();
-        unawaitedRefresh();
+        return refreshExercises();
       }
       return cached;
     }
 
     if (!await _syncService.isOnline) return [];
+    final fresh = await _fetchExercises();
+    await _store.writeExercises(fresh);
+    return fresh;
+  }
+
+  Future<List<Exercise>> refreshExercises() async {
+    if (!await _syncService.isOnline) return _store.readExercises();
+    await syncPending();
     final fresh = await _fetchExercises();
     await _store.writeExercises(fresh);
     return fresh;
@@ -48,18 +63,8 @@ class ExerciseRepository {
     await _store.upsertExercise(tempExercise);
 
     final payload = {'name': name, 'muscle_group': muscleGroup};
-    if (await _syncService.isOnline) {
-      try {
-        final created = await _createRemote(payload);
-        await _store.replaceExerciseId(localId, created);
-        return created;
-      } catch (_) {
-        await _queueCreate(localId, payload);
-        return tempExercise;
-      }
-    }
-
     await _queueCreate(localId, payload);
+    _syncInBackground();
     return tempExercise;
   }
 
@@ -71,39 +76,47 @@ class ExerciseRepository {
       return;
     }
 
-    if (await _syncService.isOnline) {
-      try {
-        await _apiClient.deleteJson('/exercises/${exercise.id}');
-        return;
-      } catch (_) {
-        await _queueDelete(exercise.id);
-        return;
-      }
-    }
-
     await _queueDelete(exercise.id);
+    _syncInBackground();
   }
 
   Future<void> syncPending() async {
+    if (_syncing) return;
     if (!await _syncService.isOnline) return;
-    final operations = await _store.readOperations();
+    _syncing = true;
+    try {
+      final operations = await _store.readOperations();
 
-    for (final operation in operations) {
-      if (operation.action == ExerciseOperationAction.create) {
-        final created = await _createRemote(operation.data ?? {});
-        if (operation.localEntityId != null) {
-          await _store.replaceExerciseId(operation.localEntityId!, created);
-        } else {
-          await _store.upsertExercise(created);
+      for (final operation in operations) {
+        if (operation.action == ExerciseOperationAction.create) {
+          final created = await _createRemote(operation.data ?? {});
+          if (operation.localEntityId != null) {
+            await _store.replaceExerciseId(operation.localEntityId!, created);
+          } else {
+            await _store.upsertExercise(created);
+          }
         }
-      }
 
-      if (operation.action == ExerciseOperationAction.delete &&
-          operation.entityId != null) {
-        await _apiClient.deleteJson('/exercises/${operation.entityId}');
-      }
+        if (operation.action == ExerciseOperationAction.delete &&
+            operation.entityId != null) {
+          try {
+            await _apiClient.deleteJson('/exercises/${operation.entityId}');
+          } on ApiException catch (exception) {
+            _failures.add(
+              SyncFailure(
+                resource: 'exercises',
+                entityId: operation.entityId,
+                message: _messageForDeleteFailure(exception),
+              ),
+            );
+            continue;
+          }
+        }
 
-      await _store.removeOperation(operation.clientId);
+        await _store.removeOperation(operation.clientId);
+      }
+    } finally {
+      _syncing = false;
     }
   }
 
@@ -111,6 +124,10 @@ class ExerciseRepository {
     _fetchExercises()
         .then(_store.writeExercises)
         .catchError((_) => <Exercise>[]);
+  }
+
+  void _syncInBackground() {
+    unawaited(syncPending().catchError((_) {}));
   }
 
   Future<List<Exercise>> _fetchExercises() async {
@@ -165,4 +182,26 @@ class ExerciseRepository {
   String _clientId() {
     return 'mobile-${DateTime.now().microsecondsSinceEpoch}';
   }
+
+  String _messageForDeleteFailure(ApiException exception) {
+    if (exception.statusCode == 409 || exception.statusCode == 422) {
+      return 'Nie mozna usunac cwiczenia, bo jest uzywane w planie lub treningu.';
+    }
+    if (exception.statusCode == 403) {
+      return 'Nie masz uprawnien do usuniecia tego cwiczenia.';
+    }
+    return exception.message;
+  }
+}
+
+class SyncFailure {
+  const SyncFailure({
+    required this.resource,
+    required this.message,
+    this.entityId,
+  });
+
+  final String resource;
+  final int? entityId;
+  final String message;
 }

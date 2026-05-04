@@ -17,6 +17,7 @@ class WorkoutPlansController extends ChangeNotifier {
   int? deletingId;
   int? savingPlanId;
   String? error;
+  String? syncError;
 
   Future<void> load() async {
     loading = true;
@@ -25,10 +26,25 @@ class WorkoutPlansController extends ChangeNotifier {
     try {
       plans = await _repository.listPlans();
       exercises = await _repository.listExercises();
+      _consumeSyncFailures();
     } catch (_) {
       error = 'Nie udalo sie pobrac planow.';
     } finally {
       loading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> refresh() async {
+    error = null;
+    notifyListeners();
+    try {
+      plans = await _repository.refreshPlans();
+      exercises = await _repository.listExercises();
+      _consumeSyncFailures();
+    } catch (_) {
+      error = 'Nie udalo sie odswiezyc planow.';
+    } finally {
       notifyListeners();
     }
   }
@@ -42,6 +58,7 @@ class WorkoutPlansController extends ChangeNotifier {
       final created = await _repository.createPlan(name);
       plans = [created, ...plans.where((plan) => plan.id != created.id)]
         ..sort((a, b) => b.id.compareTo(a.id));
+      _consumeSyncFailures();
     } catch (_) {
       error = 'Nie udalo sie dodac planu.';
     } finally {
@@ -59,6 +76,8 @@ class WorkoutPlansController extends ChangeNotifier {
     notifyListeners();
     try {
       await _repository.deletePlan(plan);
+      _consumeSyncFailures(restore: previous);
+      _checkBackgroundFailures(restore: previous);
     } catch (_) {
       plans = previous;
       error = 'Nie udalo sie usunac planu.';
@@ -86,6 +105,8 @@ class WorkoutPlansController extends ChangeNotifier {
         targetReps: targetReps,
       );
       _replacePlan(updated);
+      _consumeSyncFailures();
+      _checkBackgroundFailures();
     } catch (_) {
       error = 'Nie udalo sie dodac cwiczenia do planu.';
     } finally {
@@ -108,6 +129,8 @@ class WorkoutPlansController extends ChangeNotifier {
         dayExercise: dayExercise,
       );
       _replacePlan(updated);
+      _consumeSyncFailures();
+      _checkBackgroundFailures();
     } catch (_) {
       error = 'Nie udalo sie usunac cwiczenia z planu.';
     } finally {
@@ -121,5 +144,31 @@ class WorkoutPlansController extends ChangeNotifier {
       for (final item in plans)
         if (item.id == plan.id) plan else item,
     ];
+  }
+
+  void _consumeSyncFailures({List<WorkoutPlan>? restore}) {
+    final failures = _repository.takeFailures();
+    if (failures.isEmpty) return;
+    syncError = failures.last.message;
+    if (restore != null) {
+      final failedIds = failures.map((failure) => failure.planId).toSet();
+      final shouldRestore = restore.where(
+        (plan) => failedIds.contains(plan.id),
+      );
+      if (shouldRestore.isNotEmpty) {
+        final currentIds = plans.map((plan) => plan.id).toSet();
+        plans = [
+          ...shouldRestore.where((plan) => !currentIds.contains(plan.id)),
+          ...plans,
+        ]..sort((a, b) => b.id.compareTo(a.id));
+      }
+    }
+  }
+
+  void _checkBackgroundFailures({List<WorkoutPlan>? restore}) {
+    Future<void>.delayed(const Duration(milliseconds: 800), () {
+      _consumeSyncFailures(restore: restore);
+      notifyListeners();
+    });
   }
 }

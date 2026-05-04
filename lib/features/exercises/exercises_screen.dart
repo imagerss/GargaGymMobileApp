@@ -54,114 +54,123 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
   Widget build(BuildContext context) {
     final controller = widget.controller;
 
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: AppColors.slate200),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Cwiczenia',
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AppColors.slate950,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Dodaj i przegladaj cwiczenia',
-                  style: TextStyle(color: AppColors.slate500),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.slate50,
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(color: AppColors.slate200),
-                  ),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      children: [
-                        TextFormField(
-                          controller: _nameController,
-                          textInputAction: TextInputAction.next,
-                          decoration: const InputDecoration(
-                            labelText: 'Nazwa cwiczenia',
-                            hintText: 'Np. Wyciskanie sztangi',
-                          ),
-                          validator: (value) =>
-                              (value == null || value.trim().isEmpty)
-                              ? 'Podaj nazwe cwiczenia.'
-                              : null,
-                        ),
-                        const SizedBox(height: 10),
-                        TextFormField(
-                          controller: _muscleGroupController,
-                          textInputAction: TextInputAction.done,
-                          decoration: const InputDecoration(
-                            labelText: 'Partia miesniowa',
-                            hintText: 'Np. Klatka piersiowa',
-                          ),
-                          validator: (value) =>
-                              (value == null || value.trim().isEmpty)
-                              ? 'Podaj partie miesniowa.'
-                              : null,
-                          onFieldSubmitted: (_) => _addExercise(),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton.icon(
-                          onPressed: controller.creating ? null : _addExercise,
-                          icon: controller.creating
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.add),
-                          label: Text(
-                            controller.creating ? 'Dodaje...' : 'Dodaj',
-                          ),
-                        ),
-                      ],
+    return RefreshIndicator(
+      onRefresh: widget.controller.refresh,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Cwiczenia',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppColors.slate950,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ),
-                if (controller.error != null) ...[
-                  const SizedBox(height: 12),
-                  _InlineError(message: controller.error!),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'Dodaj i przegladaj cwiczenia',
+                    style: TextStyle(color: AppColors.slate500),
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: AppColors.slate50,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: AppColors.slate200),
+                    ),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            controller: _nameController,
+                            textInputAction: TextInputAction.next,
+                            decoration: const InputDecoration(
+                              labelText: 'Nazwa cwiczenia',
+                              hintText: 'Np. Wyciskanie sztangi',
+                            ),
+                            validator: (value) =>
+                                (value == null || value.trim().isEmpty)
+                                ? 'Podaj nazwe cwiczenia.'
+                                : null,
+                          ),
+                          const SizedBox(height: 10),
+                          TextFormField(
+                            controller: _muscleGroupController,
+                            textInputAction: TextInputAction.done,
+                            decoration: const InputDecoration(
+                              labelText: 'Partia miesniowa',
+                              hintText: 'Np. Klatka piersiowa',
+                            ),
+                            validator: (value) =>
+                                (value == null || value.trim().isEmpty)
+                                ? 'Podaj partie miesniowa.'
+                                : null,
+                            onFieldSubmitted: (_) => _addExercise(),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            onPressed: controller.creating
+                                ? null
+                                : _addExercise,
+                            icon: controller.creating
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.add),
+                            label: Text(
+                              controller.creating ? 'Dodaje...' : 'Dodaj',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  if (controller.error != null ||
+                      controller.syncError != null) ...[
+                    const SizedBox(height: 12),
+                    _InlineError(
+                      message: controller.error ?? controller.syncError!,
+                    ),
+                  ],
                 ],
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          if (controller.loading)
-            const _LoadingList()
-          else if (controller.exercises.isEmpty)
-            const _EmptyExercises()
-          else
-            ...controller.exercises.map(
-              (exercise) => Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _ExerciseTile(
-                  exercise: exercise,
-                  deleting: controller.deletingId == exercise.id,
-                  disabled: controller.deletingId != null,
-                  onDelete: () => controller.deleteExercise(exercise),
-                ),
               ),
             ),
-        ],
+            const SizedBox(height: 14),
+            if (controller.loading)
+              const _LoadingList()
+            else if (controller.exercises.isEmpty)
+              const _EmptyExercises()
+            else
+              ...controller.exercises.map(
+                (exercise) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _ExerciseTile(
+                    exercise: exercise,
+                    deleting: controller.deletingId == exercise.id,
+                    disabled: controller.deletingId != null,
+                    onDelete: () => controller.deleteExercise(exercise),
+                  ),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

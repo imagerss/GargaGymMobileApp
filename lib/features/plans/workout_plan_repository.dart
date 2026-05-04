@@ -22,19 +22,38 @@ class WorkoutPlanRepository {
   final SyncService _syncService;
   final ExerciseRepository _exerciseRepository;
   final WorkoutPlanStore _store;
+  bool _syncing = false;
+  final List<PlanSyncFailure> _failures = [];
+
+  List<PlanSyncFailure> takeFailures() {
+    final copy = List<PlanSyncFailure>.from(_failures);
+    _failures.clear();
+    return copy;
+  }
 
   Future<List<WorkoutPlan>> listPlans() async {
     final cached = await _store.readPlans();
     if (cached.isNotEmpty) {
       if (await _syncService.isOnline) {
-        await syncPending();
-        unawaitedRefresh();
+        return refreshPlans();
       }
-      return cached;
+      final enriched = await _enrichExerciseNames(cached);
+      await _store.writePlans(enriched);
+      return enriched;
     }
 
     if (!await _syncService.isOnline) return [];
-    final fresh = await _fetchPlans();
+    final fresh = await _enrichExerciseNames(await _fetchPlans());
+    await _store.writePlans(fresh);
+    return fresh;
+  }
+
+  Future<List<WorkoutPlan>> refreshPlans() async {
+    if (!await _syncService.isOnline) {
+      return _enrichExerciseNames(await _store.readPlans());
+    }
+    await syncPending();
+    final fresh = await _enrichExerciseNames(await _fetchPlans());
     await _store.writePlans(fresh);
     return fresh;
   }
@@ -57,18 +76,8 @@ class WorkoutPlanRepository {
       'is_active': true,
     };
 
-    if (await _syncService.isOnline) {
-      try {
-        final created = await _createRemotePlan(payload);
-        await _store.replacePlanId(localId, created);
-        return created;
-      } catch (_) {
-        await _queueCreatePlan(localId, payload);
-        return tempPlan;
-      }
-    }
-
     await _queueCreatePlan(localId, payload);
+    _syncInBackground();
     return tempPlan;
   }
 
@@ -79,17 +88,8 @@ class WorkoutPlanRepository {
       return;
     }
 
-    if (await _syncService.isOnline) {
-      try {
-        await _apiClient.deleteJson('/workout-plans/${plan.id}');
-        return;
-      } catch (_) {
-        await _queueDeletePlan(plan.id);
-        return;
-      }
-    }
-
     await _queueDeletePlan(plan.id);
+    _syncInBackground();
   }
 
   Future<WorkoutPlan> addExerciseToPlan({
@@ -116,23 +116,13 @@ class WorkoutPlanRepository {
       'sort_order': _firstDay(plan).workoutDayExercises.length,
     };
 
-    if (await _syncService.isOnline && plan.id > 0 && exercise.id > 0) {
-      try {
-        final refreshed = await _addRemoteExercise(plan.id, payload);
-        await _store.upsertPlan(refreshed);
-        return refreshed;
-      } catch (_) {
-        await _queueAddExercise(plan.id, null, localItemId, payload);
-        return localPlan;
-      }
-    }
-
     await _queueAddExercise(
       plan.id > 0 ? plan.id : null,
       plan.id < 0 ? plan.id : null,
       localItemId,
       payload,
     );
+    _syncInBackground();
     return localPlan;
   }
 
@@ -147,69 +137,91 @@ class WorkoutPlanRepository {
       return localPlan;
     }
 
-    if (await _syncService.isOnline && plan.id > 0) {
-      try {
-        await _apiClient.deleteJson('/workout-day-exercises/${dayExercise.id}');
-        final refreshed = await _fetchPlan(plan.id);
-        await _store.upsertPlan(refreshed);
-        return refreshed;
-      } catch (_) {
-        await _queueRemoveExercise(plan.id, dayExercise.id);
-        return localPlan;
-      }
-    }
-
     await _queueRemoveExercise(plan.id, dayExercise.id);
+    _syncInBackground();
     return localPlan;
   }
 
   Future<void> syncPending() async {
+    if (_syncing) return;
     if (!await _syncService.isOnline) return;
-    final operations = await _store.readOperations();
-    final localPlanMap = <int, int>{};
+    _syncing = true;
+    try {
+      final operations = await _store.readOperations();
+      final localPlanMap = <int, int>{};
 
-    for (final operation in operations) {
-      if (operation.action == PlanOperationAction.createPlan) {
-        final created = await _createRemotePlan(operation.data ?? {});
-        if (operation.localPlanId != null) {
-          localPlanMap[operation.localPlanId!] = created.id;
-          await _store.replacePlanId(operation.localPlanId!, created);
+      for (final operation in operations) {
+        if (operation.action == PlanOperationAction.createPlan) {
+          final created = await _createRemotePlan(operation.data ?? {});
+          if (operation.localPlanId != null) {
+            localPlanMap[operation.localPlanId!] = created.id;
+            await _store.replacePlanId(operation.localPlanId!, created);
+          }
         }
-      }
 
-      if (operation.action == PlanOperationAction.deletePlan &&
-          operation.planId != null) {
-        await _apiClient.deleteJson('/workout-plans/${operation.planId}');
-      }
-
-      if (operation.action == PlanOperationAction.addExercise) {
-        final planId =
-            operation.planId ??
-            (operation.localPlanId == null
-                ? null
-                : localPlanMap[operation.localPlanId]);
-        if (planId != null) {
-          final refreshed = await _addRemoteExercise(
-            planId,
-            operation.data ?? {},
-          );
-          await _store.upsertPlan(refreshed);
+        if (operation.action == PlanOperationAction.deletePlan &&
+            operation.planId != null) {
+          try {
+            await _apiClient.deleteJson('/workout-plans/${operation.planId}');
+          } on ApiException catch (exception) {
+            _failures.add(
+              PlanSyncFailure(
+                planId: operation.planId,
+                message: _messageForDeleteFailure(exception),
+              ),
+            );
+            continue;
+          }
         }
-      }
 
-      if (operation.action == PlanOperationAction.removeExercise &&
-          operation.dayExerciseId != null) {
-        await _apiClient.deleteJson(
-          '/workout-day-exercises/${operation.dayExerciseId}',
-        );
-      }
+        if (operation.action == PlanOperationAction.addExercise) {
+          final planId =
+              operation.planId ??
+              (operation.localPlanId == null
+                  ? null
+                  : localPlanMap[operation.localPlanId]);
+          if (planId != null) {
+            final refreshed = await _addRemoteExercise(
+              planId,
+              operation.data ?? {},
+            );
+            await _store.upsertPlan(refreshed);
+          }
+        }
 
-      await _store.removeOperation(operation.clientId);
+        if (operation.action == PlanOperationAction.removeExercise &&
+            operation.dayExerciseId != null) {
+          try {
+            await _apiClient.deleteJson(
+              '/workout-day-exercises/${operation.dayExerciseId}',
+            );
+          } on ApiException catch (exception) {
+            _failures.add(
+              PlanSyncFailure(
+                planId: operation.planId,
+                message: _messageForDeleteFailure(exception),
+              ),
+            );
+            continue;
+          }
+        }
+
+        await _store.removeOperation(operation.clientId);
+      }
+    } finally {
+      _syncing = false;
     }
   }
 
   void unawaitedRefresh() {
-    _fetchPlans().then(_store.writePlans).catchError((_) => <WorkoutPlan>[]);
+    _fetchPlans()
+        .then(_enrichExerciseNames)
+        .then(_store.writePlans)
+        .catchError((_) => <WorkoutPlan>[]);
+  }
+
+  void _syncInBackground() {
+    unawaited(syncPending().catchError((_) {}));
   }
 
   Future<List<WorkoutPlan>> _fetchPlans() async {
@@ -217,6 +229,36 @@ class WorkoutPlanRepository {
     final records = _extractList(response);
     return records.map(WorkoutPlan.fromJson).toList()
       ..sort((a, b) => b.id.compareTo(a.id));
+  }
+
+  Future<List<WorkoutPlan>> _enrichExerciseNames(
+    List<WorkoutPlan> plans,
+  ) async {
+    final exercises = await _exerciseRepository.refreshExercises();
+    final nameById = {
+      for (final exercise in exercises) exercise.id: exercise.name,
+    };
+
+    return plans
+        .map(
+          (plan) => plan.copyWith(
+            workoutDays: plan.workoutDays
+                .map(
+                  (day) => day.copyWith(
+                    workoutDayExercises: day.workoutDayExercises
+                        .map(
+                          (item) => item.copyWith(
+                            exerciseName:
+                                nameById[item.exerciseId] ?? item.exerciseName,
+                          ),
+                        )
+                        .toList(),
+                  ),
+                )
+                .toList(),
+          ),
+        )
+        .toList();
   }
 
   Future<WorkoutPlan> _fetchPlan(int id) async {
@@ -367,4 +409,21 @@ class WorkoutPlanRepository {
   }
 
   String _clientId() => 'mobile-${DateTime.now().microsecondsSinceEpoch}';
+
+  String _messageForDeleteFailure(ApiException exception) {
+    if (exception.statusCode == 409 || exception.statusCode == 422) {
+      return 'Nie mozna usunac tego elementu, bo jest juz uzywany w treningach.';
+    }
+    if (exception.statusCode == 403) {
+      return 'Nie masz uprawnien do usuniecia tego elementu.';
+    }
+    return exception.message;
+  }
+}
+
+class PlanSyncFailure {
+  const PlanSyncFailure({required this.message, this.planId});
+
+  final String message;
+  final int? planId;
 }
