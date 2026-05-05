@@ -37,10 +37,8 @@ class TrainingSession {
         remoteId: (json['remote_id'] as num?)?.toInt(),
         planId: (json['plan_id'] as num?)?.toInt(),
         planName: json['plan_name'] as String? ?? 'Sesja',
-        startedAt:
-            DateTime.tryParse(json['started_at'] as String? ?? '') ??
-            DateTime.now(),
-        endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
+        startedAt: _parseDate(json['started_at']) ?? DateTime.now(),
+        endedAt: _parseDate(json['ended_at']),
         status: json['status'] as String? ?? 'active',
         exercises: json['exercises'] is List
             ? (json['exercises'] as List)
@@ -340,10 +338,8 @@ class SessionsController extends ChangeNotifier {
       remoteId: (json['id'] as num).toInt(),
       planId: planId,
       planName: planName,
-      startedAt:
-          DateTime.tryParse(json['started_at'] as String? ?? '') ??
-          DateTime.now(),
-      endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
+      startedAt: _parseDate(json['started_at']) ?? DateTime.now(),
+      endedAt: _parseDate(json['ended_at']),
       status: json['status'] as String? ?? 'active',
       exercises: plan == null
           ? const []
@@ -406,6 +402,13 @@ class SessionsController extends ChangeNotifier {
     }
     return data is List ? data.whereType<Map<String, dynamic>>().toList() : [];
   }
+}
+
+DateTime? _parseDate(Object? value) {
+  if (value == null) return null;
+  final parsed = DateTime.tryParse(value.toString());
+  if (parsed == null) return null;
+  return parsed.isUtc ? parsed.toLocal() : parsed;
 }
 
 class SessionsScreen extends StatefulWidget {

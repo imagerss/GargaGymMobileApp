@@ -401,6 +401,7 @@ class _DashboardBody extends StatefulWidget {
 
 class _DashboardBodyState extends State<_DashboardBody> {
   int? _selectedPlanId;
+  int? _selectedTrendIndex;
   bool _loaded = false;
   final _finishWeightController = TextEditingController();
   final _finishWaistController = TextEditingController();
@@ -446,9 +447,9 @@ class _DashboardBodyState extends State<_DashboardBody> {
     ]);
   }
 
-  Future<void> _pickFinishPhoto() async {
+  Future<void> _pickFinishPhoto(ImageSource source) async {
     final picked = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
+      source: source,
       imageQuality: 88,
     );
     if (picked == null) return;
@@ -517,7 +518,28 @@ class _DashboardBodyState extends State<_DashboardBody> {
         .firstOrNull;
     final trend = [...measurements]
       ..sort((a, b) => a.measuredAt.compareTo(b.measuredAt));
-    final latestPhoto = photos.isEmpty ? null : photos.first;
+    final trendPoints = trend.length <= 12
+        ? trend.map((measurement) => _DashboardTrendPoint(measurement)).toList()
+        : trend
+              .sublist(trend.length - 12)
+              .map((measurement) => _DashboardTrendPoint(measurement))
+              .toList();
+    final photosByDate = photos
+        .where((photo) => photo.photoPath != null || photo.localPath != null)
+        .toList();
+    final trendPointsWithPhotos = [
+      for (final point in trendPoints)
+        point.copyWith(photo: _nearestPhoto(point.measurement, photosByDate)),
+    ];
+    final selectedTrendIndex = trendPointsWithPhotos.isEmpty
+        ? null
+        : (_selectedTrendIndex ?? trendPointsWithPhotos.length - 1).clamp(
+            0,
+            trendPointsWithPhotos.length - 1,
+          );
+    final selectedTrendPoint = selectedTrendIndex == null
+        ? null
+        : trendPointsWithPhotos[selectedTrendIndex];
     if (_selectedPlanId != null &&
         !sessions.plans.any((plan) => plan.id == _selectedPlanId)) {
       _selectedPlanId = null;
@@ -644,14 +666,28 @@ class _DashboardBodyState extends State<_DashboardBody> {
                             ),
                           ),
                           const SizedBox(height: 10),
-                          OutlinedButton.icon(
-                            onPressed: _pickFinishPhoto,
-                            icon: const Icon(Icons.photo_camera_outlined),
-                            label: Text(
-                              _finishPhoto == null
-                                  ? 'Dodaj zdjecie'
-                                  : 'Zmien zdjecie',
-                            ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: () =>
+                                      _pickFinishPhoto(ImageSource.camera),
+                                  icon: const Icon(Icons.photo_camera),
+                                  label: const Text('Aparat'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () =>
+                                      _pickFinishPhoto(ImageSource.gallery),
+                                  icon: const Icon(Icons.photo_library),
+                                  label: Text(
+                                    _finishPhoto == null ? 'Galeria' : 'Zmien',
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                           if (_finishPhoto != null) ...[
                             const SizedBox(height: 8),
@@ -660,6 +696,15 @@ class _DashboardBodyState extends State<_DashboardBody> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(color: AppColors.slate500),
+                            ),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () =>
+                                    setState(() => _finishPhoto = null),
+                                icon: const Icon(Icons.close),
+                                label: const Text('Usun zdjecie'),
+                              ),
                             ),
                           ],
                           const SizedBox(height: 12),
@@ -689,7 +734,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
             const SizedBox(height: 14),
             _DashboardPanel(
               title: 'Trend pomiarow',
-              child: trend.isEmpty
+              child: trendPointsWithPhotos.isEmpty
                   ? const Text(
                       'Brak danych pomiarowych do wykresu.',
                       style: TextStyle(color: AppColors.slate500),
@@ -697,32 +742,90 @@ class _DashboardBodyState extends State<_DashboardBody> {
                   : Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        SizedBox(
-                          height: 180,
-                          child: CustomPaint(
-                            painter: _TrendPainter(trend),
-                            child: const SizedBox.expand(),
-                          ),
+                        const _DashboardTrendLegend(),
+                        const SizedBox(height: 10),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTapDown: (details) => _selectTrendPoint(
+                                details.localPosition.dx,
+                                constraints.maxWidth,
+                                trendPointsWithPhotos.length,
+                              ),
+                              onHorizontalDragUpdate: (details) =>
+                                  _selectTrendPoint(
+                                    details.localPosition.dx,
+                                    constraints.maxWidth,
+                                    trendPointsWithPhotos.length,
+                                  ),
+                              child: SizedBox(
+                                height: 230,
+                                child: CustomPaint(
+                                  painter: _TrendPainter(
+                                    trendPointsWithPhotos,
+                                    selectedIndex: selectedTrendIndex,
+                                  ),
+                                  child: const SizedBox.expand(),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         const SizedBox(height: 12),
-                        if (latestPhoto != null) ...[
+                        _TrendPager(
+                          selectedIndex: selectedTrendIndex ?? 0,
+                          count: trendPointsWithPhotos.length,
+                          onPrevious:
+                              selectedTrendIndex == null ||
+                                  selectedTrendIndex == 0
+                              ? null
+                              : () => setState(
+                                  () => _selectedTrendIndex =
+                                      selectedTrendIndex - 1,
+                                ),
+                          onNext:
+                              selectedTrendIndex == null ||
+                                  selectedTrendIndex ==
+                                      trendPointsWithPhotos.length - 1
+                              ? null
+                              : () => setState(
+                                  () => _selectedTrendIndex =
+                                      selectedTrendIndex + 1,
+                                ),
+                        ),
+                        const SizedBox(height: 12),
+                        if (selectedTrendPoint != null)
+                          _TrendValueCard(point: selectedTrendPoint),
+                        const SizedBox(height: 12),
+                        if (selectedTrendPoint?.photo != null) ...[
                           ClipRRect(
                             borderRadius: BorderRadius.circular(14),
                             child: _DashboardPhoto(
-                              photo: latestPhoto,
+                              photo: selectedTrendPoint!.photo!,
                               controller: widget.photosController,
+                            ),
+                          ),
+                        ] else ...[
+                          Container(
+                            height: 180,
+                            alignment: Alignment.center,
+                            decoration: BoxDecoration(
+                              color: AppColors.slate50,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: AppColors.slate200),
+                            ),
+                            child: const Padding(
+                              padding: EdgeInsets.all(16),
+                              child: Text(
+                                'Brak powiazanego zdjecia dla tego punktu.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: AppColors.slate500),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10),
                         ],
-                        Text(
-                          'Ostatni pomiar: ${_formatDashboardDate(trend.last.measuredAt)}',
-                          style: const TextStyle(color: AppColors.slate500),
-                        ),
-                        Text(
-                          'Waga: ${trend.last.weight ?? '-'} kg | Talia: ${trend.last.waistCm ?? '-'} cm',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
                       ],
                     ),
             ),
@@ -730,6 +833,33 @@ class _DashboardBodyState extends State<_DashboardBody> {
         ),
       ),
     );
+  }
+
+  void _selectTrendPoint(double dx, double width, int count) {
+    if (count == 0) return;
+    final index = _TrendPainter.indexForDx(dx, width, count);
+    if (index == _selectedTrendIndex) return;
+    setState(() => _selectedTrendIndex = index);
+  }
+
+  ProgressPhoto? _nearestPhoto(
+    BodyMeasurement measurement,
+    List<ProgressPhoto> photos,
+  ) {
+    const maxDiff = Duration(hours: 24);
+    ProgressPhoto? nearest;
+    Duration? nearestDiff;
+
+    for (final photo in photos) {
+      final diff = photo.takenAt.difference(measurement.measuredAt).abs();
+      if (diff > maxDiff) continue;
+      if (nearestDiff == null || diff < nearestDiff) {
+        nearest = photo;
+        nearestDiff = diff;
+      }
+    }
+
+    return nearest;
   }
 }
 
@@ -876,15 +1006,183 @@ class _DashboardPhoto extends StatelessWidget {
   }
 }
 
-class _TrendPainter extends CustomPainter {
-  _TrendPainter(this.points);
+class _DashboardTrendLegend extends StatelessWidget {
+  const _DashboardTrendLegend();
 
-  final List<BodyMeasurement> points;
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        _TrendLegendItem(color: Color(0xff16a34a), label: 'Waga'),
+        SizedBox(width: 14),
+        _TrendLegendItem(color: Color(0xffea580c), label: 'Talia'),
+      ],
+    );
+  }
+}
+
+class _TrendLegendItem extends StatelessWidget {
+  const _TrendLegendItem({required this.color, required this.label});
+
+  final Color color;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.slate700,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _TrendPager extends StatelessWidget {
+  const _TrendPager({
+    required this.selectedIndex,
+    required this.count,
+    required this.onPrevious,
+    required this.onNext,
+  });
+
+  final int selectedIndex;
+  final int count;
+  final VoidCallback? onPrevious;
+  final VoidCallback? onNext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          tooltip: 'Poprzedni pomiar',
+          onPressed: onPrevious,
+          icon: const Icon(Icons.chevron_left),
+        ),
+        Expanded(
+          child: Center(
+            child: Text(
+              '${selectedIndex + 1}/$count',
+              style: const TextStyle(
+                color: AppColors.slate500,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Nastepny pomiar',
+          onPressed: onNext,
+          icon: const Icon(Icons.chevron_right),
+        ),
+      ],
+    );
+  }
+}
+
+class _TrendValueCard extends StatelessWidget {
+  const _TrendValueCard({required this.point});
+
+  final _DashboardTrendPoint point;
+
+  @override
+  Widget build(BuildContext context) {
+    final measurement = point.measurement;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.slate50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.slate200),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _formatDashboardDate(measurement.measuredAt),
+                  style: const TextStyle(color: AppColors.slate500),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Waga: ${measurement.weight ?? '-'} kg | Talia: ${measurement.waistCm ?? '-'} cm',
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            point.photo == null
+                ? Icons.photo_camera_outlined
+                : Icons.photo_camera,
+            color: point.photo == null
+                ? AppColors.slate200
+                : AppColors.slate700,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardTrendPoint {
+  const _DashboardTrendPoint(this.measurement, {this.photo});
+
+  final BodyMeasurement measurement;
+  final ProgressPhoto? photo;
+
+  _DashboardTrendPoint copyWith({ProgressPhoto? photo}) {
+    return _DashboardTrendPoint(measurement, photo: photo ?? this.photo);
+  }
+}
+
+class _TrendPainter extends CustomPainter {
+  _TrendPainter(this.points, {this.selectedIndex});
+
+  static const _leftPadding = 38.0;
+  static const _rightPadding = 10.0;
+  static const _topPadding = 12.0;
+  static const _bottomPadding = 34.0;
+
+  final List<_DashboardTrendPoint> points;
+  final int? selectedIndex;
+
+  static int indexForDx(double dx, double width, int count) {
+    if (count <= 1) return 0;
+    final chartWidth = (width - _leftPadding - _rightPadding).clamp(
+      1.0,
+      double.infinity,
+    );
+    final ratio = ((dx - _leftPadding) / chartWidth).clamp(0.0, 1.0);
+    return (ratio * (count - 1)).round();
+  }
 
   @override
   void paint(Canvas canvas, Size size) {
-    final weightValues = points.map((point) => point.weight).nonNulls.toList();
-    final waistValues = points.map((point) => point.waistCm).nonNulls.toList();
+    final weightValues = points
+        .map((point) => point.measurement.weight)
+        .nonNulls
+        .toList();
+    final waistValues = points
+        .map((point) => point.measurement.waistCm)
+        .nonNulls
+        .toList();
     final allValues = [...weightValues, ...waistValues];
     if (allValues.isEmpty) return;
 
@@ -893,14 +1191,26 @@ class _TrendPainter extends CustomPainter {
     final range = (maxValue - minValue).abs() < 0.01
         ? 1.0
         : maxValue - minValue;
+    final chartRect = Rect.fromLTWH(
+      _leftPadding,
+      _topPadding,
+      size.width - _leftPadding - _rightPadding,
+      size.height - _topPadding - _bottomPadding,
+    );
 
     final gridPaint = Paint()
       ..color = AppColors.slate200
       ..strokeWidth = 1;
     for (var i = 0; i <= 3; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), gridPaint);
+      final y = chartRect.top + chartRect.height * i / 3;
+      canvas.drawLine(
+        Offset(chartRect.left, y),
+        Offset(chartRect.right, y),
+        gridPaint,
+      );
     }
+    _drawAxisLabel(canvas, maxValue, Offset(0, chartRect.top - 6));
+    _drawAxisLabel(canvas, minValue, Offset(0, chartRect.bottom - 12));
 
     void drawLine(List<double?> values, Color color) {
       final paint = Paint()
@@ -914,33 +1224,128 @@ class _TrendPainter extends CustomPainter {
         final value = values[i];
         if (value == null) continue;
         final x = values.length == 1
-            ? 0.0
-            : size.width * i / (values.length - 1);
-        final y = size.height - ((value - minValue) / range * size.height);
+            ? chartRect.left
+            : chartRect.left + chartRect.width * i / (values.length - 1);
+        final y =
+            chartRect.bottom - ((value - minValue) / range * chartRect.height);
         if (!started) {
           path.moveTo(x, y);
           started = true;
         } else {
           path.lineTo(x, y);
         }
-        canvas.drawCircle(Offset(x, y), 4, Paint()..color = color);
+        canvas.drawCircle(Offset(x, y), 3.5, Paint()..color = color);
       }
       canvas.drawPath(path, paint);
     }
 
     drawLine(
-      points.map((point) => point.weight).toList(),
+      points.map((point) => point.measurement.weight).toList(),
       const Color(0xff16a34a),
     );
     drawLine(
-      points.map((point) => point.waistCm).toList(),
+      points.map((point) => point.measurement.waistCm).toList(),
       const Color(0xffea580c),
     );
+
+    final selected = selectedIndex;
+    if (selected != null && selected >= 0 && selected < points.length) {
+      final x = points.length == 1
+          ? chartRect.left
+          : chartRect.left + chartRect.width * selected / (points.length - 1);
+      final markerPaint = Paint()
+        ..color = AppColors.slate900.withValues(alpha: 0.16)
+        ..strokeWidth = 2;
+      canvas.drawLine(
+        Offset(x, chartRect.top),
+        Offset(x, chartRect.bottom),
+        markerPaint,
+      );
+      final selectedPoint = points[selected];
+      _drawSelectedValue(
+        canvas,
+        x,
+        selectedPoint.measurement.weight,
+        minValue,
+        range,
+        chartRect,
+        const Color(0xff16a34a),
+      );
+      _drawSelectedValue(
+        canvas,
+        x,
+        selectedPoint.measurement.waistCm,
+        minValue,
+        range,
+        chartRect,
+        const Color(0xffea580c),
+      );
+      _drawDateLabel(canvas, selectedPoint.measurement.measuredAt, x, size);
+    } else {
+      _drawDateLabel(
+        canvas,
+        points.first.measurement.measuredAt,
+        chartRect.left,
+        size,
+      );
+      _drawDateLabel(
+        canvas,
+        points.last.measurement.measuredAt,
+        chartRect.right,
+        size,
+      );
+    }
   }
 
   @override
   bool shouldRepaint(covariant _TrendPainter oldDelegate) =>
-      oldDelegate.points != points;
+      oldDelegate.points != points ||
+      oldDelegate.selectedIndex != selectedIndex;
+
+  void _drawSelectedValue(
+    Canvas canvas,
+    double x,
+    double? value,
+    double minValue,
+    double range,
+    Rect chartRect,
+    Color color,
+  ) {
+    if (value == null) return;
+    final y =
+        chartRect.bottom - ((value - minValue) / range * chartRect.height);
+    canvas.drawCircle(Offset(x, y), 7, Paint()..color = Colors.white);
+    canvas.drawCircle(Offset(x, y), 5, Paint()..color = color);
+  }
+
+  void _drawAxisLabel(Canvas canvas, double value, Offset offset) {
+    final painter = TextPainter(
+      text: TextSpan(
+        text: value.toStringAsFixed(value % 1 == 0 ? 0 : 1),
+        style: const TextStyle(color: AppColors.slate500, fontSize: 10),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout(maxWidth: _leftPadding - 4);
+    painter.paint(canvas, offset);
+  }
+
+  void _drawDateLabel(Canvas canvas, DateTime value, double x, Size size) {
+    final text =
+        '${value.day.toString().padLeft(2, '0')}.${value.month.toString().padLeft(2, '0')}';
+    final painter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: AppColors.slate500,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final dx = (x - painter.width / 2).clamp(0.0, size.width - painter.width);
+    painter.paint(canvas, Offset(dx, size.height - 22));
+  }
 }
 
 String _formatDashboardDate(DateTime value) {

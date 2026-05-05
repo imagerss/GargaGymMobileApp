@@ -31,8 +31,7 @@ class ProgressPhoto {
 
   factory ProgressPhoto.fromJson(Map<String, dynamic> json) => ProgressPhoto(
     id: (json['id'] as num).toInt(),
-    takenAt:
-        DateTime.tryParse(json['taken_at'] as String? ?? '') ?? DateTime.now(),
+    takenAt: _parseDate(json['taken_at']) ?? DateTime.now(),
     note: json['note'] as String?,
     photoPath: json['photo_path'] as String?,
     localPath: json['local_path'] as String?,
@@ -47,6 +46,13 @@ class ProgressPhoto {
     'local_path': localPath,
     'pending': pending,
   };
+}
+
+DateTime? _parseDate(Object? value) {
+  if (value == null) return null;
+  final parsed = DateTime.tryParse(value.toString());
+  if (parsed == null) return null;
+  return parsed.isUtc ? parsed.toLocal() : parsed;
 }
 
 class PhotosController extends ChangeNotifier {

@@ -24,11 +24,9 @@ class BodyMeasurement {
   factory BodyMeasurement.fromJson(Map<String, dynamic> json) {
     return BodyMeasurement(
       id: (json['id'] as num).toInt(),
-      measuredAt:
-          DateTime.tryParse(json['measured_at'] as String? ?? '') ??
-          DateTime.now(),
-      weight: (json['weight'] as num?)?.toDouble(),
-      waistCm: (json['waist_cm'] as num?)?.toDouble(),
+      measuredAt: _parseDate(json['measured_at']) ?? DateTime.now(),
+      weight: _parseDouble(json['weight']),
+      waistCm: _parseDouble(json['waist_cm']),
     );
   }
 
@@ -38,6 +36,19 @@ class BodyMeasurement {
     'weight': weight,
     'waist_cm': waistCm,
   };
+}
+
+DateTime? _parseDate(Object? value) {
+  if (value == null) return null;
+  final parsed = DateTime.tryParse(value.toString());
+  if (parsed == null) return null;
+  return parsed.isUtc ? parsed.toLocal() : parsed;
+}
+
+double? _parseDouble(Object? value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString().replaceAll(',', '.'));
 }
 
 class MeasurementsController extends ChangeNotifier {
