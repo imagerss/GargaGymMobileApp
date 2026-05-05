@@ -65,6 +65,7 @@ class TrainingSession {
     int? remoteId,
     DateTime? endedAt,
     String? status,
+    List<WorkoutDayExercise>? exercises,
   }) => TrainingSession(
     id: id,
     remoteId: remoteId ?? this.remoteId,
@@ -73,8 +74,29 @@ class TrainingSession {
     startedAt: startedAt,
     endedAt: endedAt ?? this.endedAt,
     status: status ?? this.status,
-    exercises: exercises,
+    exercises: exercises ?? this.exercises,
   );
+}
+
+class SessionSetInput {
+  const SessionSetInput({
+    required this.workoutSessionExerciseId,
+    required this.setNumber,
+    required this.reps,
+    required this.weight,
+  });
+
+  final int workoutSessionExerciseId;
+  final int setNumber;
+  final int reps;
+  final double weight;
+
+  Map<String, dynamic> toJson() => {
+    'workout_session_exercise_id': workoutSessionExerciseId,
+    'set_number': setNumber,
+    'reps': reps,
+    'weight': weight,
+  };
 }
 
 class SessionsController extends ChangeNotifier {
@@ -87,7 +109,6 @@ class SessionsController extends ChangeNotifier {
        _planRepository = planRepository;
 
   static const _cacheKey = 'training_sessions_cache_v1';
-  static const _opsKey = 'training_sessions_ops_v1';
   final ApiClient _apiClient;
   final SyncService _syncService;
   final WorkoutPlanRepository _planRepository;
@@ -98,7 +119,6 @@ class SessionsController extends ChangeNotifier {
   bool loading = false;
   bool creating = false;
   String? error;
-  bool _syncing = false;
 
   Future<void> load() async {
     loading = true;
@@ -123,10 +143,19 @@ class SessionsController extends ChangeNotifier {
     plans = await _planRepository.refreshPlans();
     final response = await _apiClient.getJson('/workout-sessions');
     final remote = _extractList(response).map(_remoteToSession).toList();
-    final localActive = (await _readCache())
-        .where((s) => s.remoteId == null || s.remoteId! < 0)
-        .toList();
-    sessions = [...localActive, ...remote]
+    final localPending = <TrainingSession>[];
+    for (final session in (await _readCache()).where(
+      (item) => item.remoteId == null || item.remoteId! < 0,
+    )) {
+      if (await _syncService.hasPendingLocalEntity(
+        'workout_sessions',
+        session.remoteId,
+        session.id,
+      )) {
+        localPending.add(session);
+      }
+    }
+    sessions = [...localPending, ...remote]
       ..sort((a, b) => b.startedAt.compareTo(a.startedAt));
     await _writeCache(sessions);
     notifyListeners();
@@ -147,25 +176,89 @@ class SessionsController extends ChangeNotifier {
       status: 'active',
       exercises: day.isEmpty ? const [] : day.first.workoutDayExercises,
     );
+    if (await _syncService.isOnline && plan.id > 0) {
+      try {
+        final response = await _apiClient.postJson(
+          '/workout-sessions',
+          body: {
+            'workout_plan_id': plan.id,
+            'started_at': session.startedAt.toIso8601String(),
+            'status': 'active',
+          },
+        );
+        final data = response['data'] as Map<String, dynamic>;
+        final remoteSession = session.copyWith(
+          remoteId: (data['id'] as num).toInt(),
+          exercises: _sessionExercisesFromPlan(plan, data),
+        );
+        sessions = [remoteSession, ...sessions];
+        await _writeCache(sessions);
+        creating = false;
+        notifyListeners();
+        return;
+      } catch (_) {
+        // Fall through to offline session when server is unreachable.
+      }
+    }
+
     sessions = [session, ...sessions];
     await _writeCache(sessions);
-    await _addOp({
-      'action': 'create',
-      'local_ref': session.id,
-      'local_id': session.remoteId,
-      'data': {
+    await _syncService.queueOperation(
+      resource: 'workout_sessions',
+      action: 'create',
+      localEntityId: session.remoteId,
+      localRef: session.id,
+      data: {
         'workout_plan_id': plan.id > 0 ? plan.id : null,
         'started_at': session.startedAt.toIso8601String(),
         'status': 'active',
       },
-    });
+    );
     _syncInBackground();
     creating = false;
     notifyListeners();
   }
 
-  Future<void> complete(TrainingSession session) async {
+  Future<void> complete(
+    TrainingSession session, {
+    List<SessionSetInput> sets = const [],
+    double? weight,
+    double? waist,
+    String? photoDataUrl,
+  }) async {
     final ended = DateTime.now();
+    final data = {
+      'status': 'completed',
+      'ended_at': ended.toIso8601String(),
+      'sets': sets.map((set) => set.toJson()).toList(),
+      if (weight != null)
+        'measurement': {
+          'measured_at': ended.toIso8601String(),
+          'weight': weight,
+          'waist_cm': waist,
+        },
+      if (photoDataUrl != null)
+        'progress_photo': {
+          'photo_data_url': photoDataUrl,
+          'taken_at': ended.toIso8601String(),
+          'note': 'Sesja ${session.planName}',
+        },
+    };
+    if (await _syncService.isOnline &&
+        session.remoteId != null &&
+        session.remoteId! > 0) {
+      try {
+        await _apiClient.postJson(
+          '/workout-sessions/${session.remoteId}/complete',
+          body: data,
+        );
+        await refresh();
+        return;
+      } catch (_) {
+        // Fall through to offline completion when server is unreachable.
+      }
+    }
+
     sessions = [
       for (final item in sessions)
         if (item.id == session.id)
@@ -174,69 +267,74 @@ class SessionsController extends ChangeNotifier {
           item,
     ];
     await _writeCache(sessions);
-    final data = {'status': 'completed', 'ended_at': ended.toIso8601String()};
     if (session.remoteId != null && session.remoteId! > 0) {
-      await _addOp({'action': 'update', 'id': session.remoteId, 'data': data});
+      await _syncService.queueOperation(
+        resource: 'workout_sessions',
+        action: 'update',
+        entityId: session.remoteId,
+        data: data,
+      );
     } else {
-      await _addOp({
-        'action': 'create',
-        'local_ref': session.id,
-        'local_id': session.remoteId,
-        'data': {
-          ...data,
-          'workout_plan_id': session.planId != null && session.planId! > 0
-              ? session.planId
-              : null,
-          'started_at': session.startedAt.toIso8601String(),
-        },
-      });
+      await _syncService.queueOperation(
+        resource: 'workout_sessions',
+        action: 'create',
+        localEntityId: session.remoteId,
+        localRef: session.id,
+        data: _offlineCreateData(session, data, sets),
+      );
     }
     _syncInBackground();
     notifyListeners();
   }
 
   Future<void> _syncPending() async {
-    if (_syncing || !await _syncService.isOnline) return;
-    _syncing = true;
-    try {
-      final ops = await _readOps();
-      for (final op in ops) {
-        try {
-          if (op['action'] == 'create') {
-            final response = await _apiClient.postJson(
-              '/workout-sessions',
-              body: Map<String, dynamic>.from(op['data'] as Map),
-            );
-            final data = response['data'] as Map<String, dynamic>;
-            final remoteId = (data['id'] as num).toInt();
-            sessions = [
-              for (final s in await _readCache())
-                if (s.id == op['local_ref'])
-                  s.copyWith(remoteId: remoteId)
-                else
-                  s,
-            ];
-            await _writeCache(sessions);
-          } else if (op['action'] == 'update') {
-            await _apiClient.patchJson(
-              '/workout-sessions/${op['id']}',
-              body: Map<String, dynamic>.from(op['data'] as Map),
-            );
-          }
-          await _removeOp(op['client_id'] as String);
-        } on ApiException catch (exception) {
-          error = exception.message;
-        }
-      }
-    } finally {
-      _syncing = false;
+    final status = await _syncService.syncNow();
+    if (status.error != null) {
+      error = status.error;
     }
+  }
+
+  Map<String, dynamic> _offlineCreateData(
+    TrainingSession session,
+    Map<String, dynamic> data,
+    List<SessionSetInput> sets,
+  ) {
+    return {
+      ...data,
+      'workout_plan_id': session.planId != null && session.planId! > 0
+          ? session.planId
+          : null,
+      'started_at': session.startedAt.toIso8601String(),
+      'sets': _setsGroupedByExercise(session, sets),
+    };
+  }
+
+  List<Map<String, dynamic>> _setsGroupedByExercise(
+    TrainingSession session,
+    List<SessionSetInput> sets,
+  ) {
+    return session.exercises
+        .map((exercise) {
+          final exerciseSets = sets
+              .where((set) => set.workoutSessionExerciseId == exercise.id)
+              .map(
+                (set) => {
+                  'set_number': set.setNumber,
+                  'reps_done': set.reps,
+                  'weight_kg': set.weight,
+                },
+              )
+              .toList();
+          return {'exercise_id': exercise.exerciseId, 'sets': exerciseSets};
+        })
+        .where((entry) => (entry['sets'] as List).isNotEmpty)
+        .toList();
   }
 
   TrainingSession _remoteToSession(Map<String, dynamic> json) {
     final planId = (json['workout_plan_id'] as num?)?.toInt();
-    final planName =
-        plans.where((p) => p.id == planId).firstOrNull?.name ?? 'Sesja';
+    final plan = plans.where((p) => p.id == planId).firstOrNull;
+    final planName = plan?.name ?? 'Sesja';
     return TrainingSession(
       id: 'remote-${json['id']}',
       remoteId: (json['id'] as num).toInt(),
@@ -247,7 +345,40 @@ class SessionsController extends ChangeNotifier {
           DateTime.now(),
       endedAt: DateTime.tryParse(json['ended_at'] as String? ?? ''),
       status: json['status'] as String? ?? 'active',
+      exercises: plan == null
+          ? const []
+          : _sessionExercisesFromPlan(plan, json),
     );
+  }
+
+  List<WorkoutDayExercise> _sessionExercisesFromPlan(
+    WorkoutPlan plan,
+    Map<String, dynamic> sessionJson,
+  ) {
+    final sessionExercises = sessionJson['workout_session_exercises'];
+    final sessionExerciseIdByExerciseId = <int, int>{};
+    if (sessionExercises is List) {
+      for (final raw in sessionExercises.whereType<Map<String, dynamic>>()) {
+        final exerciseId = (raw['exercise_id'] as num?)?.toInt();
+        final id = (raw['id'] as num?)?.toInt();
+        if (exerciseId != null && id != null) {
+          sessionExerciseIdByExerciseId[exerciseId] = id;
+        }
+      }
+    }
+
+    final days = [...plan.workoutDays]
+      ..sort((a, b) => a.dayOrder.compareTo(b.dayOrder));
+    if (days.isEmpty) return const [];
+    return days.first.workoutDayExercises
+        .map(
+          (exercise) => exercise.copyWith(
+            id:
+                sessionExerciseIdByExerciseId[exercise.exerciseId] ??
+                exercise.id,
+          ),
+        )
+        .toList();
   }
 
   void _syncInBackground() => unawaited(_syncPending().catchError((_) {}));
@@ -267,27 +398,6 @@ class SessionsController extends ChangeNotifier {
     _cacheKey,
     jsonEncode(value.map((e) => e.toJson()).toList()),
   );
-  Future<List<Map<String, dynamic>>> _readOps() async {
-    final raw = await _prefs.getString(_opsKey);
-    if (raw == null) return [];
-    final decoded = jsonDecode(raw);
-    return decoded is List
-        ? decoded.whereType<Map<String, dynamic>>().toList()
-        : [];
-  }
-
-  Future<void> _writeOps(List<Map<String, dynamic>> ops) =>
-      _prefs.setString(_opsKey, jsonEncode(ops));
-  Future<void> _addOp(Map<String, dynamic> op) async {
-    final ops = await _readOps();
-    ops.add({...op, 'client_id': 's-${DateTime.now().microsecondsSinceEpoch}'});
-    await _writeOps(ops);
-  }
-
-  Future<void> _removeOp(String id) async {
-    final ops = await _readOps();
-    await _writeOps(ops.where((op) => op['client_id'] != id).toList());
-  }
 
   List<Map<String, dynamic>> _extractList(Map<String, dynamic> response) {
     final data = response['data'];

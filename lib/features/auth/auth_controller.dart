@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../services/api_client.dart';
@@ -28,6 +30,7 @@ class AuthController extends ChangeNotifier {
   bool offline = false;
   String? error;
   SyncStatus syncStatus = const SyncStatus();
+  Timer? _syncTimer;
 
   bool get isAuthenticated => user != null;
 
@@ -56,6 +59,7 @@ class AuthController extends ChangeNotifier {
         }
       }
     }
+    if (user != null) _ensureBackgroundSync();
 
     initialized = true;
     notifyListeners();
@@ -101,6 +105,7 @@ class AuthController extends ChangeNotifier {
       if (!offline) {
         syncStatus = await _syncService.syncNow();
       }
+      _ensureBackgroundSync();
     } on ApiException catch (exception) {
       error = exception.message;
       rethrow;
@@ -124,10 +129,18 @@ class AuthController extends ChangeNotifier {
   }
 
   Future<void> logoutLocal() async {
+    _syncTimer?.cancel();
+    _syncTimer = null;
     _apiClient.bearerToken = null;
     user = null;
     await _sessionStore.clearSession();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _syncTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> syncIfNeeded() async {
@@ -141,5 +154,11 @@ class AuthController extends ChangeNotifier {
 
   Future<void> _clearLocalUserData() async {
     // Clear per-user cached resources here when the next mobile modules land.
+  }
+
+  void _ensureBackgroundSync() {
+    _syncTimer ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(syncIfNeeded());
+    });
   }
 }

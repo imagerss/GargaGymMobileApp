@@ -71,7 +71,6 @@ class PhotosController extends ChangeNotifier {
   int? deletingId;
   String note = '';
   String? error;
-  bool _syncing = false;
 
   Future<void> load() async {
     loading = true;
@@ -95,7 +94,15 @@ class PhotosController extends ChangeNotifier {
     final response = await _apiClient.getJson('/progress-photos');
     final fresh = _extractList(response).map(ProgressPhoto.fromJson).toList()
       ..sort((a, b) => b.takenAt.compareTo(a.takenAt));
-    final pending = (await _readCache()).where((item) => item.pending).toList();
+    final pending = <ProgressPhoto>[];
+    for (final photo in (await _readCache()).where((item) => item.pending)) {
+      if (await _syncService.hasPendingLocalEntity(
+        'progress_photos',
+        photo.id,
+      )) {
+        pending.add(photo);
+      }
+    }
     photos = [...pending, ...fresh];
     await _writeCache(photos);
     notifyListeners();
@@ -104,6 +111,10 @@ class PhotosController extends ChangeNotifier {
   Future<void> pickAndAdd(ImageSource source) async {
     final file = await picker.pickImage(source: source, imageQuality: 88);
     if (file == null) return;
+    await addPickedFile(file);
+  }
+
+  Future<void> addPickedFile(XFile file) async {
     uploading = true;
     error = null;
     notifyListeners();
@@ -114,8 +125,31 @@ class PhotosController extends ChangeNotifier {
       localPath: file.path,
       pending: true,
     );
+    if (await _syncService.isOnline) {
+      try {
+        await _upload(photo);
+        await refresh();
+        note = '';
+        uploading = false;
+        notifyListeners();
+        return;
+      } catch (_) {
+        // Fall through to offline pending photo when upload cannot reach server.
+      }
+    }
+
     photos = [photo, ...photos];
     await _writeCache(photos);
+    await _syncService.queueOperation(
+      resource: 'progress_photos',
+      action: 'create',
+      localEntityId: photo.id,
+      data: {
+        'photo_data_url': await _dataUrlForFile(file.path),
+        'taken_at': photo.takenAt.toIso8601String(),
+        if (photo.note?.isNotEmpty == true) 'note': photo.note,
+      },
+    );
     note = '';
     _syncInBackground();
     uploading = false;
@@ -129,11 +163,18 @@ class PhotosController extends ChangeNotifier {
     await _writeCache(photos);
     notifyListeners();
     try {
-      if (photo.id > 0) {
+      if (photo.id < 0) {
+        await _syncService.discardLocalEntity('progress_photos', photo.id);
+      } else if (photo.id > 0) {
         if (await _syncService.isOnline) {
           await _apiClient.deleteJson('/progress-photos/${photo.id}');
         } else {
-          error = 'Usuwanie zdjec offline zostanie dodane w kolejnym kroku.';
+          await _syncService.queueOperation(
+            resource: 'progress_photos',
+            action: 'delete',
+            entityId: photo.id,
+          );
+          _syncInBackground();
         }
       }
     } catch (e) {
@@ -154,25 +195,9 @@ class PhotosController extends ChangeNotifier {
   }
 
   Future<void> _syncPending() async {
-    if (_syncing || !await _syncService.isOnline) return;
-    _syncing = true;
-    try {
-      for (final photo in List<ProgressPhoto>.from(
-        await _readCache(),
-      ).where((item) => item.pending)) {
-        try {
-          final created = await _upload(photo);
-          photos = [
-            for (final item in await _readCache())
-              if (item.id == photo.id) created else item,
-          ];
-          await _writeCache(photos);
-        } on ApiException catch (exception) {
-          error = exception.message;
-        }
-      }
-    } finally {
-      _syncing = false;
+    final status = await _syncService.syncNow();
+    if (status.error != null) {
+      error = status.error;
     }
   }
 
@@ -188,6 +213,17 @@ class PhotosController extends ChangeNotifier {
       files: [await http.MultipartFile.fromPath('photo', path)],
     );
     return ProgressPhoto.fromJson(response['data'] as Map<String, dynamic>);
+  }
+
+  Future<String> _dataUrlForFile(String path) async {
+    final extension = path.split('.').last.toLowerCase();
+    final mediaType = switch (extension) {
+      'png' => 'image/png',
+      'webp' => 'image/webp',
+      'jpg' || 'jpeg' => 'image/jpeg',
+      _ => 'image/jpeg',
+    };
+    return 'data:$mediaType;base64,${base64Encode(await File(path).readAsBytes())}';
   }
 
   void _syncInBackground() => unawaited(_syncPending().catchError((_) {}));

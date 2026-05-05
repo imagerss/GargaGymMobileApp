@@ -76,6 +76,17 @@ class WorkoutPlanRepository {
       'is_active': true,
     };
 
+    if (await _syncService.isOnline) {
+      try {
+        final created = await _createRemotePlan(payload);
+        await _store.replacePlanId(localId, created);
+        await refreshPlans();
+        return created;
+      } catch (_) {
+        // Fall through to offline queue when the server cannot accept the write.
+      }
+    }
+
     await _queueCreatePlan(localId, payload);
     _syncInBackground();
     return tempPlan;
@@ -86,6 +97,24 @@ class WorkoutPlanRepository {
     if (plan.id < 0) {
       await _store.discardOperationsForPlan(plan.id);
       return;
+    }
+
+    if (await _syncService.isOnline) {
+      try {
+        await _apiClient.deleteJson('/workout-plans/${plan.id}');
+        await refreshPlans();
+        return;
+      } on ApiException catch (exception) {
+        _failures.add(
+          PlanSyncFailure(
+            planId: plan.id,
+            message: _messageForDeleteFailure(exception),
+          ),
+        );
+        return;
+      } catch (_) {
+        // Fall through to offline queue when connectivity is flaky.
+      }
     }
 
     await _queueDeletePlan(plan.id);
@@ -116,6 +145,17 @@ class WorkoutPlanRepository {
       'sort_order': _firstDay(plan).workoutDayExercises.length,
     };
 
+    if (await _syncService.isOnline && plan.id > 0 && exercise.id > 0) {
+      try {
+        final refreshed = await _addRemoteExercise(plan.id, payload);
+        final enriched = (await _enrichExerciseNames([refreshed])).first;
+        await _store.upsertPlan(enriched);
+        return enriched;
+      } catch (_) {
+        // Fall through to offline queue when the server cannot accept the write.
+      }
+    }
+
     await _queueAddExercise(
       plan.id > 0 ? plan.id : null,
       plan.id < 0 ? plan.id : null,
@@ -135,6 +175,26 @@ class WorkoutPlanRepository {
 
     if (dayExercise.id < 0) {
       return localPlan;
+    }
+
+    if (await _syncService.isOnline && plan.id > 0) {
+      try {
+        await _apiClient.deleteJson('/workout-day-exercises/${dayExercise.id}');
+        final refreshed = await _fetchPlan(plan.id);
+        final enriched = (await _enrichExerciseNames([refreshed])).first;
+        await _store.upsertPlan(enriched);
+        return enriched;
+      } on ApiException catch (exception) {
+        _failures.add(
+          PlanSyncFailure(
+            planId: plan.id,
+            message: _messageForDeleteFailure(exception),
+          ),
+        );
+        return plan;
+      } catch (_) {
+        // Fall through to offline queue when connectivity is flaky.
+      }
     }
 
     await _queueRemoveExercise(plan.id, dayExercise.id);

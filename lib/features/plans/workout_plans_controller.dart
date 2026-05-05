@@ -22,6 +22,7 @@ class WorkoutPlansController extends ChangeNotifier {
   Future<void> load() async {
     loading = true;
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       plans = await _repository.listPlans();
@@ -37,6 +38,7 @@ class WorkoutPlansController extends ChangeNotifier {
 
   Future<void> refresh() async {
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       plans = await _repository.refreshPlans();
@@ -53,11 +55,13 @@ class WorkoutPlansController extends ChangeNotifier {
     if (creating) return;
     creating = true;
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       final created = await _repository.createPlan(name);
       plans = [created, ...plans.where((plan) => plan.id != created.id)]
         ..sort((a, b) => b.id.compareTo(a.id));
+      plans = await _repository.listPlans();
       _consumeSyncFailures();
     } catch (_) {
       error = 'Nie udalo sie dodac planu.';
@@ -73,10 +77,14 @@ class WorkoutPlansController extends ChangeNotifier {
     deletingId = plan.id;
     plans = plans.where((item) => item.id != plan.id).toList();
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       await _repository.deletePlan(plan);
       _consumeSyncFailures(restore: previous);
+      if (syncError == null) {
+        plans = await _repository.listPlans();
+      }
       _checkBackgroundFailures(restore: previous);
     } catch (_) {
       plans = previous;
@@ -96,6 +104,7 @@ class WorkoutPlansController extends ChangeNotifier {
     if (savingPlanId != null) return;
     savingPlanId = plan.id;
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       final updated = await _repository.addExerciseToPlan(
@@ -105,6 +114,7 @@ class WorkoutPlansController extends ChangeNotifier {
         targetReps: targetReps,
       );
       _replacePlan(updated);
+      plans = await _repository.listPlans();
       _consumeSyncFailures();
       _checkBackgroundFailures();
     } catch (_) {
@@ -122,6 +132,7 @@ class WorkoutPlansController extends ChangeNotifier {
     if (savingPlanId != null) return;
     savingPlanId = plan.id;
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       final updated = await _repository.removeExerciseFromPlan(
@@ -129,6 +140,9 @@ class WorkoutPlansController extends ChangeNotifier {
         dayExercise: dayExercise,
       );
       _replacePlan(updated);
+      if (syncError == null) {
+        plans = await _repository.listPlans();
+      }
       _consumeSyncFailures();
       _checkBackgroundFailures();
     } catch (_) {

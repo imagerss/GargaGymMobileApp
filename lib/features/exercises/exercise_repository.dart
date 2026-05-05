@@ -63,6 +63,17 @@ class ExerciseRepository {
     await _store.upsertExercise(tempExercise);
 
     final payload = {'name': name, 'muscle_group': muscleGroup};
+    if (await _syncService.isOnline) {
+      try {
+        final created = await _createRemote(payload);
+        await _store.replaceExerciseId(localId, created);
+        await refreshExercises();
+        return created;
+      } catch (_) {
+        // Fall through to offline queue when the server cannot accept the write.
+      }
+    }
+
     await _queueCreate(localId, payload);
     _syncInBackground();
     return tempExercise;
@@ -74,6 +85,25 @@ class ExerciseRepository {
     if (exercise.id < 0) {
       await _store.discardOperationsForLocalId(exercise.id);
       return;
+    }
+
+    if (await _syncService.isOnline) {
+      try {
+        await _apiClient.deleteJson('/exercises/${exercise.id}');
+        await refreshExercises();
+        return;
+      } on ApiException catch (exception) {
+        _failures.add(
+          SyncFailure(
+            resource: 'exercises',
+            entityId: exercise.id,
+            message: _messageForDeleteFailure(exception),
+          ),
+        );
+        return;
+      } catch (_) {
+        // Fall through to offline queue when connectivity is flaky.
+      }
     }
 
     await _queueDelete(exercise.id);

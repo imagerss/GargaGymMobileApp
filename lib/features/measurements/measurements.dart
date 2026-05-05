@@ -48,7 +48,6 @@ class MeasurementsController extends ChangeNotifier {
        _syncService = syncService;
 
   static const _cacheKey = 'body_measurements_cache_v1';
-  static const _opsKey = 'body_measurements_ops_v1';
   final ApiClient _apiClient;
   final SyncService _syncService;
   final _prefs = SharedPreferencesAsync();
@@ -58,7 +57,6 @@ class MeasurementsController extends ChangeNotifier {
   bool saving = false;
   int? deletingId;
   String? error;
-  bool _syncing = false;
 
   Future<void> load() async {
     loading = true;
@@ -102,13 +100,26 @@ class MeasurementsController extends ChangeNotifier {
       weight: weight,
       waistCm: waistCm,
     );
+    if (await _syncService.isOnline) {
+      try {
+        await _apiClient.postJson('/body-measurements', body: item.toJson());
+        await refresh();
+        saving = false;
+        notifyListeners();
+        return;
+      } catch (_) {
+        // Fall through to offline save when the server is unreachable.
+      }
+    }
+
     items = [item, ...items];
     await _writeCache(items);
-    await _addOp({
-      'action': 'create',
-      'local_id': item.id,
-      'data': item.toJson(),
-    });
+    await _syncService.queueOperation(
+      resource: 'body_measurements',
+      action: 'create',
+      localEntityId: item.id,
+      data: item.toJson(),
+    );
     _syncInBackground();
     saving = false;
     notifyListeners();
@@ -122,9 +133,21 @@ class MeasurementsController extends ChangeNotifier {
     notifyListeners();
 
     if (item.id < 0) {
-      await _removeOpsForLocal(item.id);
+      await _syncService.discardLocalEntity('body_measurements', item.id);
+    } else if (await _syncService.isOnline) {
+      try {
+        await _apiClient.deleteJson('/body-measurements/${item.id}');
+        await refresh();
+      } catch (e) {
+        items = previous;
+        error = e is ApiException ? e.message : 'Nie udalo sie usunac pomiaru.';
+      }
     } else {
-      await _addOp({'action': 'delete', 'id': item.id});
+      await _syncService.queueOperation(
+        resource: 'body_measurements',
+        action: 'delete',
+        entityId: item.id,
+      );
       _syncInBackground();
     }
     deletingId = null;
@@ -133,36 +156,9 @@ class MeasurementsController extends ChangeNotifier {
   }
 
   Future<void> _syncPending() async {
-    if (_syncing || !await _syncService.isOnline) return;
-    _syncing = true;
-    try {
-      final ops = await _readOps();
-      for (final op in ops) {
-        try {
-          if (op['action'] == 'create') {
-            final data = Map<String, dynamic>.from(op['data'] as Map);
-            final response = await _apiClient.postJson(
-              '/body-measurements',
-              body: data,
-            );
-            final created = BodyMeasurement.fromJson(
-              response['data'] as Map<String, dynamic>,
-            );
-            items = [
-              for (final item in await _readCache())
-                if (item.id == op['local_id']) created else item,
-            ];
-            await _writeCache(items);
-          } else if (op['action'] == 'delete') {
-            await _apiClient.deleteJson('/body-measurements/${op['id']}');
-          }
-          await _removeOp(op['client_id'] as String);
-        } on ApiException catch (exception) {
-          error = exception.message;
-        }
-      }
-    } finally {
-      _syncing = false;
+    final status = await _syncService.syncNow();
+    if (status.error != null) {
+      error = status.error;
     }
   }
 
@@ -184,34 +180,6 @@ class MeasurementsController extends ChangeNotifier {
     _cacheKey,
     jsonEncode(value.map((item) => item.toJson()).toList()),
   );
-
-  Future<List<Map<String, dynamic>>> _readOps() async {
-    final raw = await _prefs.getString(_opsKey);
-    if (raw == null) return [];
-    final decoded = jsonDecode(raw);
-    return decoded is List
-        ? decoded.whereType<Map<String, dynamic>>().toList()
-        : [];
-  }
-
-  Future<void> _writeOps(List<Map<String, dynamic>> ops) =>
-      _prefs.setString(_opsKey, jsonEncode(ops));
-
-  Future<void> _addOp(Map<String, dynamic> op) async {
-    final ops = await _readOps();
-    ops.add({...op, 'client_id': 'm-${DateTime.now().microsecondsSinceEpoch}'});
-    await _writeOps(ops);
-  }
-
-  Future<void> _removeOp(String id) async {
-    final ops = await _readOps();
-    await _writeOps(ops.where((op) => op['client_id'] != id).toList());
-  }
-
-  Future<void> _removeOpsForLocal(int id) async {
-    final ops = await _readOps();
-    await _writeOps(ops.where((op) => op['local_id'] != id).toList());
-  }
 
   List<Map<String, dynamic>> _extractList(Map<String, dynamic> response) {
     final data = response['data'];

@@ -19,6 +19,7 @@ class ExercisesController extends ChangeNotifier {
   Future<void> load() async {
     loading = true;
     error = null;
+    syncError = null;
     notifyListeners();
 
     try {
@@ -34,6 +35,7 @@ class ExercisesController extends ChangeNotifier {
 
   Future<void> refresh() async {
     error = null;
+    syncError = null;
     notifyListeners();
     try {
       exercises = await _repository.refreshExercises();
@@ -52,6 +54,7 @@ class ExercisesController extends ChangeNotifier {
     if (creating) return;
     creating = true;
     error = null;
+    syncError = null;
     notifyListeners();
 
     try {
@@ -61,6 +64,7 @@ class ExercisesController extends ChangeNotifier {
       );
       exercises = [created, ...exercises.where((item) => item.id != created.id)]
         ..sort((a, b) => b.id.compareTo(a.id));
+      exercises = await _repository.listExercises();
       _consumeSyncFailures();
     } catch (_) {
       error = 'Nie udalo sie dodac cwiczenia.';
@@ -77,11 +81,15 @@ class ExercisesController extends ChangeNotifier {
     deletingId = exercise.id;
     exercises = exercises.where((item) => item.id != exercise.id).toList();
     error = null;
+    syncError = null;
     notifyListeners();
 
     try {
       await _repository.deleteExercise(exercise);
       _consumeSyncFailures(restore: previous);
+      if (syncError == null) {
+        exercises = await _repository.listExercises();
+      }
       _checkBackgroundFailures(restore: previous);
     } catch (_) {
       exercises = previous;

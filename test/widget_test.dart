@@ -54,8 +54,48 @@ class _FakeSyncService implements SyncService {
   Future<bool> get isOnline async => false;
 
   @override
+  Future<void> discardLocalEntity(
+    String resource,
+    int localEntityId, [
+    String? localRef,
+  ]) async {}
+
+  @override
+  Future<bool> hasPendingLocalEntity(
+    String resource,
+    int? localEntityId, [
+    String? localRef,
+  ]) async => false;
+
+  @override
   Future<SyncStatus> loadState() async => const SyncStatus();
 
   @override
+  Future<int> pendingCount() async => 0;
+
+  @override
+  Future<Map<String, dynamic>?> pullChanges({String? updatedSince}) async =>
+      null;
+
+  @override
+  Future<String?> pushQueue() async => null;
+
+  @override
+  Future<void> queueOperation({
+    required String resource,
+    required String action,
+    int? entityId,
+    int? localEntityId,
+    String? localRef,
+    Map<String, dynamic>? data,
+  }) async {}
+
+  @override
+  Future<List<SyncOperation>> readOperations() async => const [];
+
+  @override
   Future<SyncStatus> syncNow() async => const SyncStatus();
+
+  @override
+  Future<void> writeOperations(List<SyncOperation> operations) async {}
 }
