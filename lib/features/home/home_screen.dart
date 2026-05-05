@@ -385,6 +385,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
   int? _selectedPlanId;
   int? _selectedTrendIndex;
   bool _loaded = false;
+  bool _dashboardLoading = true;
   final _finishWeightController = TextEditingController();
   final _finishWaistController = TextEditingController();
   final _prefs = SharedPreferencesAsync();
@@ -416,11 +417,18 @@ class _DashboardBodyState extends State<_DashboardBody> {
   Future<void> _load() async {
     if (_loaded) return;
     _loaded = true;
-    await Future.wait([
-      widget.sessionsController.load(),
-      widget.measurementsController.load(),
-      widget.photosController.load(),
-    ]);
+    setState(() => _dashboardLoading = true);
+    try {
+      await Future.wait([
+        widget.sessionsController.load(),
+        widget.measurementsController.load(),
+        widget.photosController.load(),
+      ]);
+    } finally {
+      if (mounted) {
+        setState(() => _dashboardLoading = false);
+      }
+    }
   }
 
   Future<void> _refresh() async {
@@ -559,6 +567,36 @@ class _DashboardBodyState extends State<_DashboardBody> {
     if (_selectedPlanId != null &&
         !sessions.plans.any((plan) => plan.id == _selectedPlanId)) {
       _selectedPlanId = null;
+    }
+
+    if (_dashboardLoading) {
+      return RefreshIndicator(
+        onRefresh: _refresh,
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Czesc, ${widget.userName ?? 'sportowcu'}',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  color: AppColors.slate950,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.offline
+                    ? 'Brak internetu. Nadal mozesz korzystac z zapisanych danych.'
+                    : 'Twoj panel startowy treningu i progresu.',
+                style: const TextStyle(color: AppColors.slate700, height: 1.35),
+              ),
+              const SizedBox(height: 16),
+              const _DashboardLoadingState(),
+            ],
+          ),
+        ),
+      );
     }
 
     return RefreshIndicator(
@@ -1001,6 +1039,45 @@ class _DashboardSetValue {
         ..reps = json['reps'] as String? ?? '';
 
   Map<String, dynamic> toJson() => {'weight': weight, 'reps': reps};
+}
+
+class _DashboardLoadingState extends StatelessWidget {
+  const _DashboardLoadingState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.slate200),
+      ),
+      child: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: AppColors.slate900,
+            ),
+          ),
+          SizedBox(height: 14),
+          Text(
+            'Ladowanie dashboardu',
+            style: TextStyle(
+              color: AppColors.slate900,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text('Prosze czekac', style: TextStyle(color: AppColors.slate500)),
+        ],
+      ),
+    );
+  }
 }
 
 class _DashboardPanel extends StatelessWidget {
