@@ -19,7 +19,7 @@ class ProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppColors.slate200),
         ),
         child: Column(
@@ -37,15 +37,14 @@ class ProfileScreen extends StatelessWidget {
             const SizedBox(height: 10),
             _ProfileRow(label: 'Email', value: user?.email ?? '-'),
             const SizedBox(height: 18),
-            OutlinedButton.icon(
+            OutlinedButton(
               onPressed: controller.logout,
-              icon: const Icon(Icons.logout),
-              label: const Text('Wyloguj'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xffb91c1c),
                 side: const BorderSide(color: Color(0xfffecaca)),
                 minimumSize: const Size.fromHeight(48),
               ),
+              child: const Text('Wyloguj'),
             ),
           ],
         ),

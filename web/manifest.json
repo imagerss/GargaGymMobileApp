@@ -1,11 +1,11 @@
 {
-    "name": "gargagymmobileapp",
-    "short_name": "gargagymmobileapp",
+    "name": "GargaGym",
+    "short_name": "GargaGym",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0a0f1f",
+    "theme_color": "#0a0f1f",
+    "description": "Gym progress tracker with offline support.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -65,7 +65,7 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.slate200),
               ),
               child: Column(
@@ -88,7 +88,7 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppColors.slate50,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.slate200),
                     ),
                     child: Form(
@@ -122,20 +122,23 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
                             onFieldSubmitted: (_) => _addExercise(),
                           ),
                           const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: controller.creating
-                                ? null
-                                : _addExercise,
-                            icon: controller.creating
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.add),
-                            label: Text(
-                              controller.creating ? 'Dodaje...' : 'Dodaj',
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: controller.creating
+                                  ? null
+                                  : _addExercise,
+                              icon: controller.creating
+                                  ? const SizedBox.square(
+                                      dimension: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.add, size: 18),
+                              label: Text(
+                                controller.creating ? 'Dodaje...' : 'Dodaj',
+                              ),
                             ),
                           ),
                         ],
@@ -149,26 +152,26 @@ class _ExercisesScreenState extends State<ExercisesScreen> {
                       message: controller.error ?? controller.syncError!,
                     ),
                   ],
+                  const SizedBox(height: 16),
+                  if (controller.loading)
+                    const _LoadingList()
+                  else if (controller.exercises.isEmpty)
+                    const _EmptyExercises()
+                  else
+                    ...controller.exercises.map(
+                      (exercise) => Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: _ExerciseTile(
+                          exercise: exercise,
+                          deleting: controller.deletingId == exercise.id,
+                          disabled: controller.deletingId != null,
+                          onDelete: () => controller.deleteExercise(exercise),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
-            const SizedBox(height: 14),
-            if (controller.loading)
-              const _LoadingList()
-            else if (controller.exercises.isEmpty)
-              const _EmptyExercises()
-            else
-              ...controller.exercises.map(
-                (exercise) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _ExerciseTile(
-                    exercise: exercise,
-                    deleting: controller.deletingId == exercise.id,
-                    disabled: controller.deletingId != null,
-                    onDelete: () => controller.deleteExercise(exercise),
-                  ),
-                ),
-              ),
           ],
         ),
       ),
@@ -195,45 +198,35 @@ class _ExerciseTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  exercise.name,
-                  style: const TextStyle(
-                    color: AppColors.slate950,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 3),
-                Text(
-                  exercise.muscleGroup.isEmpty
-                      ? 'Brak partii'
-                      : exercise.muscleGroup,
-                  style: const TextStyle(color: AppColors.slate500),
-                ),
-              ],
+          Text(
+            exercise.name,
+            style: const TextStyle(
+              color: AppColors.slate950,
+              fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
-            onPressed: disabled ? null : onDelete,
-            icon: deleting
-                ? const SizedBox.square(
-                    dimension: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.delete_outline, size: 18),
-            label: const Text('Usun'),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: const Color(0xffb91c1c),
-              side: const BorderSide(color: Color(0xfffecaca)),
+          const SizedBox(height: 3),
+          Text(
+            exercise.muscleGroup.isEmpty ? 'Brak partii' : exercise.muscleGroup,
+            style: const TextStyle(color: AppColors.slate500),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton(
+              onPressed: disabled ? null : onDelete,
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.danger,
+                foregroundColor: Colors.white,
+                minimumSize: const Size.fromHeight(42),
+              ),
+              child: Text(deleting ? 'Usuwam...' : 'Usun'),
             ),
           ),
         ],
@@ -263,7 +256,7 @@ class _EmptyExercises extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
       child: const Text(
@@ -286,7 +279,7 @@ class _InlineError extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xfffff1f2),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xffffcdd2)),
       ),
       child: Text(

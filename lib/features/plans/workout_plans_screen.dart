@@ -83,7 +83,7 @@ class _WorkoutPlansScreenState extends State<WorkoutPlansScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.slate200),
               ),
               child: Column(
@@ -106,7 +106,7 @@ class _WorkoutPlansScreenState extends State<WorkoutPlansScreen> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppColors.slate50,
-                      borderRadius: BorderRadius.circular(14),
+                      borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.slate200),
                     ),
                     child: Form(
@@ -127,18 +127,25 @@ class _WorkoutPlansScreenState extends State<WorkoutPlansScreen> {
                             onFieldSubmitted: (_) => _createPlan(),
                           ),
                           const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: controller.creating ? null : _createPlan,
-                            icon: controller.creating
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(Icons.add),
-                            label: Text(
-                              controller.creating ? 'Dodaje...' : 'Dodaj plan',
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: controller.creating
+                                  ? null
+                                  : _createPlan,
+                              icon: controller.creating
+                                  ? const SizedBox.square(
+                                      dimension: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Icon(Icons.add, size: 18),
+                              label: Text(
+                                controller.creating
+                                    ? 'Dodaje...'
+                                    : 'Dodaj plan',
+                              ),
                             ),
                           ),
                         ],
@@ -243,66 +250,57 @@ class _PlanTile extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      plan.name,
-                      style: const TextStyle(
-                        color: AppColors.slate950,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      plan.description?.isNotEmpty == true
-                          ? plan.description!
-                          : 'Brak opisu',
-                      style: const TextStyle(color: AppColors.slate500),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                tooltip: configuring ? 'Ukryj konfiguracje' : 'Konfiguruj plan',
-                onPressed: onToggleConfig,
-                icon: Icon(
-                  configuring ? Icons.expand_less : Icons.tune_outlined,
-                ),
-              ),
-              IconButton(
-                tooltip: 'Usun',
-                onPressed: busy ? null : onDelete,
-                color: const Color(0xffb91c1c),
-                icon: deleting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.delete_outline),
-              ),
-            ],
+          Text(
+            plan.name,
+            style: const TextStyle(
+              color: AppColors.slate950,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            plan.description?.isNotEmpty == true
+                ? plan.description!
+                : 'Brak opisu',
+            style: const TextStyle(color: AppColors.slate500),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton(
+            onPressed: onToggleConfig,
+            style: OutlinedButton.styleFrom(
+              backgroundColor: AppColors.slate100,
+              side: BorderSide.none,
+              foregroundColor: AppColors.slate900,
+              minimumSize: const Size.fromHeight(42),
+            ),
+            child: Text(configuring ? 'Ukryj konfiguracje' : 'Konfiguruj plan'),
+          ),
+          const SizedBox(height: 8),
+          FilledButton(
+            onPressed: busy ? null : onDelete,
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.danger,
+              foregroundColor: Colors.white,
+              minimumSize: const Size.fromHeight(42),
+            ),
+            child: Text(deleting ? 'Usuwam...' : 'Usun'),
           ),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppColors.slate50,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.slate200),
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Text(
                   'Cwiczenia w planie: ${planExercises.length}',
@@ -317,19 +315,27 @@ class _PlanTile extends StatelessWidget {
                 ] else ...[
                   const SizedBox(height: 8),
                   for (final item in planExercises)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Row(
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(
-                            child: Text(
-                              '${item.exerciseName} - ${item.targetSets}x${item.targetReps}',
-                            ),
+                          Text(
+                            '${item.exerciseName} - ${item.targetSets}x${item.targetReps}',
                           ),
+                          const SizedBox(height: 8),
                           TextButton(
                             onPressed: busy
                                 ? null
                                 : () => onRemoveExercise(item),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.danger,
+                            ),
                             child: const Text('Usun'),
                           ),
                         ],
@@ -384,15 +390,20 @@ class _PlanTile extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: busy || form.exerciseId == null ? null : onAddExercise,
-              icon: saving
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.add),
-              label: Text(saving ? 'Zapisuje...' : 'Dodaj cwiczenie'),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: busy || form.exerciseId == null
+                    ? null
+                    : onAddExercise,
+                icon: saving
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.add, size: 18),
+                label: Text(saving ? 'Zapisuje...' : 'Dodaj cwiczenie'),
+              ),
             ),
           ],
         ],
@@ -418,7 +429,7 @@ class _NumberStepper extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
       child: Row(
@@ -467,7 +478,7 @@ class _EmptyPlans extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
       child: const Text(
@@ -490,7 +501,7 @@ class _InlineError extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xfffff1f2),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xffffcdd2)),
       ),
       child: Text(

@@ -448,7 +448,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.slate200),
               ),
               child: Column(
@@ -480,13 +480,16 @@ class _SessionsScreenState extends State<SessionsScreen> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: c.creating || selected == null
-                        ? null
-                        : () => c.start(selected!),
-                    icon: const Icon(Icons.play_arrow),
-                    label: Text(
-                      c.creating ? 'Rozpoczynam...' : 'Rozpocznij sesje',
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: c.creating || selected == null
+                          ? null
+                          : () => c.start(selected!),
+                      icon: const Icon(Icons.play_arrow, size: 18),
+                      label: Text(
+                        c.creating ? 'Rozpoczynam...' : 'Rozpocznij sesje',
+                      ),
                     ),
                   ),
                   if (c.error != null) ...[
@@ -510,7 +513,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.slate200),
                 ),
                 child: const Text(
@@ -523,7 +526,7 @@ class _SessionsScreenState extends State<SessionsScreen> {
                 _SessionCard(
                   session: session,
                   onComplete: session.status == 'active'
-                      ? () => c.complete(session)
+                      ? (sets) => c.complete(session, sets: sets)
                       : null,
                 ),
           ],
@@ -533,17 +536,59 @@ class _SessionsScreenState extends State<SessionsScreen> {
   }
 }
 
-class _SessionCard extends StatelessWidget {
+class _SessionCard extends StatefulWidget {
   const _SessionCard({required this.session, this.onComplete});
+
   final TrainingSession session;
-  final VoidCallback? onComplete;
+  final Future<void> Function(List<SessionSetInput> sets)? onComplete;
+
+  @override
+  State<_SessionCard> createState() => _SessionCardState();
+}
+
+class _SessionCardState extends State<_SessionCard> {
+  final _setValues = <String, _SessionSetValue>{};
+  bool _completing = false;
+
+  Future<void> _complete() async {
+    final onComplete = widget.onComplete;
+    if (onComplete == null || _completing) return;
+    setState(() => _completing = true);
+    await onComplete(_collectSets());
+    if (mounted) setState(() => _completing = false);
+  }
+
+  List<SessionSetInput> _collectSets() {
+    final result = <SessionSetInput>[];
+    for (final exercise in widget.session.exercises) {
+      if (exercise.id <= 0) continue;
+      for (var set = 1; set <= exercise.targetSets; set++) {
+        final value = _setValues['${exercise.id}-$set'];
+        final reps = int.tryParse(value?.reps ?? '');
+        final weight = double.tryParse(
+          (value?.weight ?? '').replaceAll(',', '.'),
+        );
+        if (reps == null || weight == null) continue;
+        result.add(
+          SessionSetInput(
+            workoutSessionExerciseId: exercise.id,
+            setNumber: set,
+            reps: reps,
+            weight: weight,
+          ),
+        );
+      }
+    }
+    return result;
+  }
+
   @override
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 10),
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(color: AppColors.slate200),
     ),
     child: Column(
@@ -553,35 +598,142 @@ class _SessionCard extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                session.planName,
+                widget.session.planName,
                 style: const TextStyle(fontWeight: FontWeight.w800),
               ),
             ),
             Text(
-              session.status == 'active' ? 'W trakcie' : 'Zakonczona',
+              widget.session.status == 'active' ? 'W trakcie' : 'Zakonczona',
               style: const TextStyle(color: AppColors.slate500),
             ),
           ],
         ),
         const SizedBox(height: 4),
         Text(
-          'Start: ${session.startedAt.day}.${session.startedAt.month}.${session.startedAt.year}',
+          'Start: ${widget.session.startedAt.day}.${widget.session.startedAt.month}.${widget.session.startedAt.year}',
           style: const TextStyle(color: AppColors.slate500),
         ),
-        if (session.exercises.isNotEmpty) ...[
+        if (widget.session.exercises.isNotEmpty) ...[
           const SizedBox(height: 10),
-          for (final e in session.exercises)
-            Text('${e.exerciseName} - ${e.targetSets}x${e.targetReps}'),
+          if (widget.onComplete == null)
+            for (final e in widget.session.exercises)
+              Text('${e.exerciseName} - ${e.targetSets}x${e.targetReps}')
+          else
+            for (final exercise in widget.session.exercises)
+              _SessionExerciseSets(
+                exercise: exercise,
+                values: _setValues,
+                onChanged: () {},
+              ),
         ],
-        if (onComplete != null) ...[
+        if (widget.onComplete != null) ...[
           const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: onComplete,
-            icon: const Icon(Icons.check),
-            label: const Text('Zakoncz sesje'),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: _completing ? null : _complete,
+              icon: const Icon(Icons.check, size: 18),
+              label: Text(_completing ? 'Koncze...' : 'Zakoncz sesje'),
+            ),
           ),
         ],
       ],
     ),
   );
+}
+
+class _SessionExerciseSets extends StatelessWidget {
+  const _SessionExerciseSets({
+    required this.exercise,
+    required this.values,
+    required this.onChanged,
+  });
+
+  final WorkoutDayExercise exercise;
+  final Map<String, _SessionSetValue> values;
+  final VoidCallback onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.slate50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.slate200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            '${exercise.exerciseName} - cel ${exercise.targetSets}x${exercise.targetReps}',
+            style: const TextStyle(fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(height: 8),
+          for (var set = 1; set <= exercise.targetSets; set++)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Seria $set',
+                    style: const TextStyle(
+                      color: AppColors.slate500,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(labelText: 'kg'),
+                          onChanged: (value) {
+                            _valueFor(set).weight = value;
+                            onChanged();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Powtorzenia',
+                          ),
+                          onChanged: (value) {
+                            _valueFor(set).reps = value;
+                            onChanged();
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  _SessionSetValue _valueFor(int set) {
+    final key = '${exercise.id}-$set';
+    return values.putIfAbsent(key, _SessionSetValue.new);
+  }
+}
+
+class _SessionSetValue {
+  String weight = '';
+  String reps = '';
 }

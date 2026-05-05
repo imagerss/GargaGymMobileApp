@@ -300,7 +300,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: Colors.white,
-                borderRadius: BorderRadius.circular(18),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(color: AppColors.slate200),
               ),
               child: Column(
@@ -377,7 +377,7 @@ class _PhotosScreenState extends State<PhotosScreen> {
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: AppColors.slate200),
                 ),
                 child: const Text(
@@ -392,14 +392,14 @@ class _PhotosScreenState extends State<PhotosScreen> {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(14),
+                    borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppColors.slate200),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: BorderRadius.circular(8),
                         child: photo.localPath != null
                             ? Image.file(
                                 File(photo.localPath!),
@@ -443,14 +443,14 @@ class _PhotosScreenState extends State<PhotosScreen> {
                               'Oczekuje',
                               style: TextStyle(color: AppColors.slate500),
                             ),
-                          IconButton(
+                          TextButton(
                             onPressed: c.deletingId == null
                                 ? () => c.delete(photo)
                                 : null,
-                            icon: const Icon(
-                              Icons.delete_outline,
-                              color: Color(0xffb91c1c),
+                            style: TextButton.styleFrom(
+                              foregroundColor: AppColors.danger,
                             ),
+                            child: const Text('Usun'),
                           ),
                         ],
                       ),

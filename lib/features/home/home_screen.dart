@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/app_logo.dart';
 import '../../core/app_theme.dart';
 import '../auth/auth_controller.dart';
 import '../exercises/exercises_controller.dart';
@@ -65,7 +68,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.92),
                   border: Border.all(color: Colors.white),
-                  borderRadius: BorderRadius.circular(28),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x1f0f172a),
@@ -76,18 +79,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Row(
                   children: [
-                    Container(
-                      width: 44,
-                      height: 44,
-                      decoration: BoxDecoration(
-                        color: AppColors.slate900,
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      child: const Icon(
-                        Icons.fitness_center,
-                        color: Colors.white,
-                      ),
-                    ),
+                    const AppLogo(size: 44, borderRadius: 12),
                     const SizedBox(width: 12),
                     const Expanded(
                       child: Column(
@@ -187,18 +179,7 @@ class _AppMenu extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Container(
-                    width: 42,
-                    height: 42,
-                    decoration: BoxDecoration(
-                      color: AppColors.slate900,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Icon(
-                      Icons.fitness_center,
-                      color: Colors.white,
-                    ),
-                  ),
+                  const AppLogo(size: 42, borderRadius: 12),
                   const SizedBox(width: 12),
                   const Expanded(
                     child: Text(
@@ -279,18 +260,17 @@ class _AppMenu extends StatelessWidget {
               const Spacer(),
               const Divider(color: AppColors.slate200),
               const SizedBox(height: 8),
-              OutlinedButton.icon(
+              OutlinedButton(
                 onPressed: () async {
                   Navigator.of(context).pop();
                   await controller.logout();
                 },
-                icon: const Icon(Icons.logout),
-                label: const Text('Wyloguj'),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: const Color(0xffb91c1c),
                   side: const BorderSide(color: Color(0xfffecaca)),
                   minimumSize: const Size.fromHeight(48),
                 ),
+                child: const Text('Wyloguj'),
               ),
             ],
           ),
@@ -400,11 +380,14 @@ class _DashboardBody extends StatefulWidget {
 }
 
 class _DashboardBodyState extends State<_DashboardBody> {
+  static const _setDraftsKey = 'dashboard_session_set_drafts_v1';
+
   int? _selectedPlanId;
   int? _selectedTrendIndex;
   bool _loaded = false;
   final _finishWeightController = TextEditingController();
   final _finishWaistController = TextEditingController();
+  final _prefs = SharedPreferencesAsync();
   final _setValues = <String, _DashboardSetValue>{};
   XFile? _finishPhoto;
 
@@ -414,6 +397,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
     widget.sessionsController.addListener(_changed);
     widget.measurementsController.addListener(_changed);
     widget.photosController.addListener(_changed);
+    unawaited(_loadSetDrafts());
     _load();
   }
 
@@ -456,6 +440,37 @@ class _DashboardBodyState extends State<_DashboardBody> {
     setState(() => _finishPhoto = picked);
   }
 
+  Future<void> _loadSetDrafts() async {
+    final raw = await _prefs.getString(_setDraftsKey);
+    if (raw == null) return;
+    final decoded = jsonDecode(raw);
+    if (decoded is! Map<String, dynamic>) return;
+    _setValues
+      ..clear()
+      ..addAll(
+        decoded.map(
+          (key, value) => MapEntry(
+            key,
+            value is Map<String, dynamic>
+                ? _DashboardSetValue.fromJson(value)
+                : _DashboardSetValue(),
+          ),
+        ),
+      );
+    if (mounted) setState(() {});
+  }
+
+  void _saveSetDrafts() {
+    unawaited(
+      _prefs.setString(
+        _setDraftsKey,
+        jsonEncode(
+          _setValues.map((key, value) => MapEntry(key, value.toJson())),
+        ),
+      ),
+    );
+  }
+
   Future<void> _completeActiveSession(TrainingSession session) async {
     final weight = double.tryParse(
       _finishWeightController.text.replaceAll(',', '.'),
@@ -481,6 +496,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
       _finishPhoto = null;
       _setValues.clear();
     });
+    unawaited(_prefs.remove(_setDraftsKey));
     await _refresh();
   }
 
@@ -589,21 +605,24 @@ class _DashboardBodyState extends State<_DashboardBody> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: sessions.creating || _selectedPlanId == null
-                        ? null
-                        : () {
-                            final plan = sessions.plans
-                                .where((item) => item.id == _selectedPlanId)
-                                .firstOrNull;
-                            if (plan == null) return;
-                            sessions.start(plan);
-                          },
-                    icon: const Icon(Icons.play_arrow),
-                    label: Text(
-                      sessions.creating
-                          ? 'Rozpoczynam...'
-                          : 'Rozpocznij sesje teraz',
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: sessions.creating || _selectedPlanId == null
+                          ? null
+                          : () {
+                              final plan = sessions.plans
+                                  .where((item) => item.id == _selectedPlanId)
+                                  .firstOrNull;
+                              if (plan == null) return;
+                              sessions.start(plan);
+                            },
+                      icon: const Icon(Icons.play_arrow, size: 18),
+                      label: Text(
+                        sessions.creating
+                            ? 'Rozpoczynam...'
+                            : 'Rozpocznij sesje teraz',
+                      ),
                     ),
                   ),
                   if (activeSession != null) ...[
@@ -612,7 +631,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: AppColors.slate50,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppColors.slate200),
                       ),
                       child: Column(
@@ -646,7 +665,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
                                 sessionId: activeSession.id,
                                 exercise: exercise,
                                 values: _setValues,
-                                onChanged: () => setState(() {}),
+                                onChanged: _saveSetDrafts,
                               ),
                           ],
                           const SizedBox(height: 12),
@@ -699,20 +718,25 @@ class _DashboardBodyState extends State<_DashboardBody> {
                             ),
                             Align(
                               alignment: Alignment.centerLeft,
-                              child: TextButton.icon(
+                              child: TextButton(
                                 onPressed: () =>
                                     setState(() => _finishPhoto = null),
-                                icon: const Icon(Icons.close),
-                                label: const Text('Usun zdjecie'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: AppColors.danger,
+                                ),
+                                child: const Text('Usun zdjecie'),
                               ),
                             ),
                           ],
                           const SizedBox(height: 12),
-                          FilledButton.icon(
-                            onPressed: () =>
-                                _completeActiveSession(activeSession),
-                            icon: const Icon(Icons.check),
-                            label: const Text('Zakoncz aktywna sesje'),
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton.icon(
+                              onPressed: () =>
+                                  _completeActiveSession(activeSession),
+                              icon: const Icon(Icons.check, size: 18),
+                              label: const Text('Zakoncz aktywna sesje'),
+                            ),
                           ),
                         ],
                       ),
@@ -800,7 +824,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
                         const SizedBox(height: 12),
                         if (selectedTrendPoint?.photo != null) ...[
                           ClipRRect(
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(8),
                             child: _DashboardPhoto(
                               photo: selectedTrendPoint!.photo!,
                               controller: widget.photosController,
@@ -812,7 +836,7 @@ class _DashboardBodyState extends State<_DashboardBody> {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: AppColors.slate50,
-                              borderRadius: BorderRadius.circular(14),
+                              borderRadius: BorderRadius.circular(8),
                               border: Border.all(color: AppColors.slate200),
                             ),
                             child: const Padding(
@@ -880,14 +904,14 @@ class _DashboardExerciseSets extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
             '${exercise.exerciseName} - cel ${exercise.targetSets}x${exercise.targetReps}',
@@ -895,40 +919,61 @@ class _DashboardExerciseSets extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           for (var set = 1; set <= exercise.targetSets; set++)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: Row(
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: AppColors.slate50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: AppColors.slate200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  SizedBox(
-                    width: 76,
-                    child: Text(
-                      'Seria $set',
-                      style: const TextStyle(color: AppColors.slate500),
+                  Text(
+                    'Seria $set',
+                    style: const TextStyle(
+                      color: AppColors.slate500,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(hintText: 'kg'),
-                      onChanged: (value) {
-                        _valueFor(set).weight = value;
-                        onChanged();
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: TextField(
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        hintText: 'powtorzenia',
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          key: ValueKey(
+                            '$sessionId-${exercise.id}-$set-weight-${_valueFor(set).weight}',
+                          ),
+                          initialValue: _valueFor(set).weight,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: const InputDecoration(labelText: 'kg'),
+                          onChanged: (value) {
+                            _valueFor(set).weight = value;
+                            onChanged();
+                          },
+                        ),
                       ),
-                      onChanged: (value) {
-                        _valueFor(set).reps = value;
-                        onChanged();
-                      },
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextFormField(
+                          key: ValueKey(
+                            '$sessionId-${exercise.id}-$set-reps-${_valueFor(set).reps}',
+                          ),
+                          initialValue: _valueFor(set).reps,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Powtorzenia',
+                          ),
+                          onChanged: (value) {
+                            _valueFor(set).reps = value;
+                            onChanged();
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -947,6 +992,15 @@ class _DashboardExerciseSets extends StatelessWidget {
 class _DashboardSetValue {
   String weight = '';
   String reps = '';
+
+  _DashboardSetValue();
+
+  factory _DashboardSetValue.fromJson(Map<String, dynamic> json) =>
+      _DashboardSetValue()
+        ..weight = json['weight'] as String? ?? ''
+        ..reps = json['reps'] as String? ?? '';
+
+  Map<String, dynamic> toJson() => {'weight': weight, 'reps': reps};
 }
 
 class _DashboardPanel extends StatelessWidget {
@@ -961,7 +1015,7 @@ class _DashboardPanel extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppColors.slate200),
       ),
       child: Column(
@@ -1106,7 +1160,7 @@ class _TrendValueCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppColors.slate50,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.slate200),
       ),
       child: Row(

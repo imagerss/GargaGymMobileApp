@@ -257,7 +257,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                     decoration: const InputDecoration(labelText: 'Talia (cm)'),
                   ),
                   const SizedBox(height: 12),
-                  FilledButton.icon(
+                  FilledButton(
                     onPressed: c.saving
                         ? null
                         : () async {
@@ -274,8 +274,7 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                             _weight.clear();
                             _waist.clear();
                           },
-                    icon: const Icon(Icons.add),
-                    label: Text(c.saving ? 'Zapisuje...' : 'Dodaj pomiar'),
+                    child: Text(c.saving ? 'Zapisuje...' : 'Dodaj pomiar'),
                   ),
                   if (c.error != null) ...[
                     const SizedBox(height: 12),
@@ -295,14 +294,14 @@ class _MeasurementsScreenState extends State<MeasurementsScreen> {
                   title: _formatDate(item.measuredAt),
                   subtitle:
                       'Waga ${item.weight ?? '-'} kg | Talia ${item.waistCm ?? '-'} cm',
-                  trailing: IconButton(
+                  trailing: TextButton(
                     onPressed: c.deletingId == null
                         ? () => c.delete(item)
                         : null,
-                    icon: const Icon(
-                      Icons.delete_outline,
-                      color: Color(0xffb91c1c),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.danger,
                     ),
+                    child: const Text('Usun'),
                   ),
                 ),
           ],
@@ -329,7 +328,7 @@ class _Panel extends StatelessWidget {
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: BorderRadius.circular(12),
       border: Border.all(color: AppColors.slate200),
     ),
     child: Column(
@@ -365,7 +364,7 @@ class _ListTileCard extends StatelessWidget {
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(color: AppColors.slate200),
     ),
     child: Row(
@@ -394,7 +393,7 @@ class _EmptyText extends StatelessWidget {
     padding: const EdgeInsets.all(18),
     decoration: BoxDecoration(
       color: Colors.white,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(color: AppColors.slate200),
     ),
     child: Text(text, style: const TextStyle(color: AppColors.slate500)),
@@ -410,7 +409,7 @@ class _ErrorText extends StatelessWidget {
     padding: const EdgeInsets.all(12),
     decoration: BoxDecoration(
       color: const Color(0xfffff1f2),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(8),
       border: Border.all(color: const Color(0xffffcdd2)),
     ),
     child: Text(

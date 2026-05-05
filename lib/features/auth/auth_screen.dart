@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/app_logo.dart';
 import '../../core/app_theme.dart';
 import '../../services/api_client.dart';
 import 'auth_controller.dart';
@@ -83,7 +84,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   border: Border.all(color: AppColors.slate200),
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: const [
                     BoxShadow(
                       color: Color(0x160f172a),
@@ -100,18 +101,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     children: [
                       Row(
                         children: [
-                          Container(
-                            width: 46,
-                            height: 46,
-                            decoration: BoxDecoration(
-                              color: AppColors.slate900,
-                              borderRadius: BorderRadius.circular(18),
-                            ),
-                            child: const Icon(
-                              Icons.fitness_center,
-                              color: Colors.white,
-                            ),
-                          ),
+                          const AppLogo(size: 46, borderRadius: 12),
                           const SizedBox(width: 12),
                           Expanded(
                             child: Column(
@@ -278,21 +268,9 @@ class _AuthScreenState extends State<AuthScreen> {
                         ),
                       ],
                       const SizedBox(height: 18),
-                      FilledButton.icon(
+                      FilledButton(
                         onPressed: controller.loading ? null : _submit,
-                        icon: controller.loading
-                            ? const SizedBox.square(
-                                dimension: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : Icon(
-                                _isRegister
-                                    ? Icons.person_add_alt
-                                    : Icons.login,
-                              ),
-                        label: Text(
+                        child: Text(
                           controller.loading
                               ? (_isRegister
                                     ? 'Tworzenie konta...'
@@ -327,7 +305,7 @@ class _ErrorMessage extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: const Color(0xfffff1f2),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: const Color(0xffffcdd2)),
       ),
       child: Text(
